@@ -1,4 +1,4 @@
-# Websocket (RFC 6455 Implementation)
+# Websocket (RFC 6455)
 
 This repository provides a **RFC 6455–compliant WebSocket implementation** with both C and C++ APIs, enabling effortless integration into a wide range of applications. It supports both standard (`ws://`) and secure (`wss://`) connections, utilizing [mbedTLS](https://tls.mbed.org/) for encrypted communication.
 
