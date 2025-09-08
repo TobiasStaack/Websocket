@@ -21,7 +21,7 @@ This repository provides a **RFC 6455–compliant WebSocket implementation** wit
 - **permessage-deflate**  
   Adds support for compressed messages using the permessage-deflate WebSocket extension.
 
-## ⚠Limitations
+## Limitations
 
 - **Sec-WebSocket-Protocol**  
   Currently not handled.
