@@ -29,7 +29,7 @@ SOFTWARE.
 #include <vector>
 
 static unsigned
-__to_chars_len( unsigned int __value, int __base = 10 ) noexcept
+__to_chars_len( unsigned int __value, const int __base = 10 ) noexcept
 {
     unsigned __n = 1;
     const unsigned __b2 = __base * __base;
@@ -37,7 +37,7 @@ __to_chars_len( unsigned int __value, int __base = 10 ) noexcept
     const unsigned long __b4 = __b3 * __base;
     for ( ;; )
     {
-        if ( __value < ( unsigned )__base )
+        if ( __value < static_cast< unsigned >( __base ) )
             return __n;
         if ( __value < __b2 )
             return __n + 1;
@@ -51,14 +51,13 @@ __to_chars_len( unsigned int __value, int __base = 10 ) noexcept
 }
 
 static void
-__to_chars_10_impl( char *__first, unsigned __len, unsigned int __val ) noexcept
+__to_chars_10_impl( char* __first, unsigned __len, unsigned int __val ) noexcept
 {
-    constexpr char __digits[ 201 ] =
-        "0001020304050607080910111213141516171819"
-        "2021222324252627282930313233343536373839"
-        "4041424344454647484950515253545556575859"
-        "6061626364656667686970717273747576777879"
-        "8081828384858687888990919293949596979899";
+    constexpr char __digits[ 201 ] = "0001020304050607080910111213141516171819"
+                                     "2021222324252627282930313233343536373839"
+                                     "4041424344454647484950515253545556575859"
+                                     "6061626364656667686970717273747576777879"
+                                     "8081828384858687888990919293949596979899";
     unsigned __pos = __len - 1;
     while ( __val >= 100 )
     {
@@ -93,22 +92,22 @@ struct c_byte_stream::impl_t
     unlock() const;
 
     e_status
-    push( const unsigned char *source, size_t size );
+    push( const unsigned char* source, size_t size );
 
     e_status
-    push_back( const unsigned char *source, size_t size );
+    push_back( const unsigned char* source, size_t size );
 
     e_status
-    pull( unsigned char *destination, size_t &size, size_t offset );
+    pull( unsigned char* destination, size_t& size, size_t offset );
 
     e_status
-    pull_back( unsigned char *destination, size_t &size, size_t offset );
+    pull_back( unsigned char* destination, size_t& size, size_t offset );
 
     e_status
-    move( const c_byte_stream *destination, size_t size, size_t offset );
+    move( const c_byte_stream* destination, size_t size, size_t offset );
 
     e_status
-    copy( unsigned char *destination, size_t size, size_t *available, size_t offset ) const;
+    copy( unsigned char* destination, size_t size, size_t* available, size_t offset ) const;
 
     e_status
     pop( size_t size );
@@ -123,21 +122,21 @@ struct c_byte_stream::impl_t
     flush();
 
     int
-    compare( const unsigned char *pattern, size_t size, size_t offset, size_t end ) const;
+    compare( const unsigned char* pattern, size_t size, size_t offset, size_t end ) const;
 
     size_t
     index_of( int val, size_t offset, size_t end );
 
     size_t
-    index_of( const unsigned char *pattern, size_t size, size_t offset, size_t end ) const;
+    index_of( const unsigned char* pattern, size_t size, size_t offset, size_t end ) const;
 
     size_t
     index_of_back( int val, size_t offset, size_t end ) const;
 
     size_t
-    index_of_back( const unsigned char *pattern, size_t size, size_t offset, size_t end ) const;
+    index_of_back( const unsigned char* pattern, size_t size, size_t offset, size_t end ) const;
 
-    unsigned char *
+    unsigned char*
     pointer( size_t offset ) const;
 
     bool
@@ -165,14 +164,9 @@ c_byte_stream::impl_t::unlock() const
     mutex.unlock();
 }
 
-c_byte_stream::
-    c_byte_stream()
-{
-    impl = new impl_t();
-}
+c_byte_stream::c_byte_stream() { impl = new impl_t(); }
 
-c_byte_stream::
-    c_byte_stream( const c_byte_stream &other )
+c_byte_stream::c_byte_stream( const c_byte_stream& other )
 {
     impl = new impl_t();
 
@@ -183,8 +177,8 @@ c_byte_stream::
     impl->container = other.impl->container;
 }
 
-c_byte_stream &
-c_byte_stream::operator=( const c_byte_stream &other )
+c_byte_stream&
+c_byte_stream::operator=( const c_byte_stream& other )
 {
     if ( this == &other )
     {
@@ -200,15 +194,14 @@ c_byte_stream::operator=( const c_byte_stream &other )
     return *this;
 }
 
-c_byte_stream::
-    c_byte_stream( c_byte_stream &&other ) noexcept
+c_byte_stream::c_byte_stream( c_byte_stream&& other ) noexcept
 {
     impl = other.impl;
     other.impl = nullptr;
 }
 
-c_byte_stream &
-c_byte_stream::operator=( c_byte_stream &&other ) noexcept
+c_byte_stream&
+c_byte_stream::operator=( c_byte_stream&& other ) noexcept
 {
     if ( this == &other )
     {
@@ -236,7 +229,7 @@ c_byte_stream::~c_byte_stream()
     }
 }
 
-c_byte_stream &
+c_byte_stream&
 c_byte_stream::operator<<( const unsigned char value )
 {
     if ( push_back( value ) != e_status::ok )
@@ -247,23 +240,23 @@ c_byte_stream::operator<<( const unsigned char value )
     return *this;
 }
 
-c_byte_stream &
-c_byte_stream::operator<<( const char *value )
+c_byte_stream&
+c_byte_stream::operator<<( const char* value )
 {
     const size_t size = std::strlen( value );
-    push_back( reinterpret_cast< unsigned char * >( const_cast< char * >( value ) ), size );
+    push_back( reinterpret_cast< unsigned char* >( const_cast< char* >( value ) ), size );
     return *this;
 }
 
-c_byte_stream &
-c_byte_stream::operator<<( unsigned char *value )
+c_byte_stream&
+c_byte_stream::operator<<( unsigned char* value )
 {
-    const size_t size = std::strlen( reinterpret_cast< const char * >( value ) );
+    const size_t size = std::strlen( reinterpret_cast< const char* >( value ) );
     push_back( value, size );
     return *this;
 }
 
-c_byte_stream &
+c_byte_stream&
 c_byte_stream::operator<<( const int value )
 {
     const bool neg = value < 0;
@@ -274,14 +267,14 @@ c_byte_stream::operator<<( const int value )
 
     __to_chars_10_impl( &first[ neg ], len, uval );
 
-    push_back( reinterpret_cast< unsigned char * >( first ), neg + len );
+    push_back( reinterpret_cast< unsigned char* >( first ), neg + len );
 
     delete[] first;
 
     return *this;
 }
 
-c_byte_stream &
+c_byte_stream&
 c_byte_stream::operator<<( const unsigned int value )
 {
     const auto len = __to_chars_len( value );
@@ -290,7 +283,7 @@ c_byte_stream::operator<<( const unsigned int value )
 
     __to_chars_10_impl( &first[ false ], len, value );
 
-    push_back( reinterpret_cast< unsigned char * >( first ), len );
+    push_back( reinterpret_cast< unsigned char* >( first ), len );
 
     delete[] first;
 
@@ -318,13 +311,13 @@ c_byte_stream::resize( const size_t size ) const
 }
 
 c_byte_stream::e_status
-c_byte_stream::impl_t::push( const unsigned char *source, const size_t size )
+c_byte_stream::impl_t::push( const unsigned char* source, const size_t size )
 {
     try
     {
         container.insert( container.begin(), source, source + size );
     }
-    catch ( const std::bad_alloc & )
+    catch ( const std::bad_alloc& )
     {
         return e_status::out_of_memory;
     }
@@ -337,13 +330,13 @@ c_byte_stream::impl_t::push( const unsigned char *source, const size_t size )
 }
 
 c_byte_stream::e_status
-c_byte_stream::impl_t::push_back( const unsigned char *source, const size_t size )
+c_byte_stream::impl_t::push_back( const unsigned char* source, const size_t size )
 {
     try
     {
         container.insert( container.end(), source, source + size );
     }
-    catch ( const std::bad_alloc & )
+    catch ( const std::bad_alloc& )
     {
         return e_status::out_of_memory;
     }
@@ -356,7 +349,7 @@ c_byte_stream::impl_t::push_back( const unsigned char *source, const size_t size
 }
 
 c_byte_stream::e_status
-c_byte_stream::impl_t::pull( unsigned char *destination, size_t &size, const size_t offset )
+c_byte_stream::impl_t::pull( unsigned char* destination, size_t& size, const size_t offset )
 {
     if ( offset >= container.size() )
     {
@@ -377,9 +370,8 @@ c_byte_stream::impl_t::pull( unsigned char *destination, size_t &size, const siz
     return pop( size );
 }
 
-
 c_byte_stream::e_status
-c_byte_stream::impl_t::pull_back( unsigned char *destination, size_t &size, const size_t offset )
+c_byte_stream::impl_t::pull_back( unsigned char* destination, size_t& size, const size_t offset )
 {
     if ( offset >= container.size() )
     {
@@ -401,7 +393,7 @@ c_byte_stream::impl_t::pull_back( unsigned char *destination, size_t &size, cons
 }
 
 c_byte_stream::e_status
-c_byte_stream::impl_t::move( const c_byte_stream *destination, const size_t size, const size_t offset )
+c_byte_stream::impl_t::move( const c_byte_stream* destination, const size_t size, const size_t offset )
 {
     if ( offset >= container.size() )
     {
@@ -418,13 +410,11 @@ c_byte_stream::impl_t::move( const c_byte_stream *destination, const size_t size
         const auto begin = container.begin() + static_cast< ptrdiff_t >( offset );
         const auto end = begin + static_cast< ptrdiff_t >( size );
 
-        destination->impl->container.insert( destination->impl->container.end(),
-            std::make_move_iterator( begin ),
-            std::make_move_iterator( end ) );
+        destination->impl->container.insert( destination->impl->container.end(), std::make_move_iterator( begin ), std::make_move_iterator( end ) );
 
         container.erase( begin, end );
     }
-    catch ( const std::bad_alloc & )
+    catch ( const std::bad_alloc& )
     {
         return e_status::out_of_memory;
     }
@@ -437,7 +427,7 @@ c_byte_stream::impl_t::move( const c_byte_stream *destination, const size_t size
 }
 
 c_byte_stream::e_status
-c_byte_stream::impl_t::copy( unsigned char *destination, size_t size, size_t *available, const size_t offset ) const
+c_byte_stream::impl_t::copy( unsigned char* destination, size_t size, size_t* available, const size_t offset ) const
 {
     if ( offset >= container.size() )
     {
@@ -530,7 +520,7 @@ c_byte_stream::impl_t::flush()
 }
 
 int
-c_byte_stream::impl_t::compare( const unsigned char *pattern, size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::impl_t::compare( const unsigned char* pattern, size_t size, const size_t offset, const size_t end ) const
 {
     if ( container.empty() || size == 0 || offset >= container.size() )
     {
@@ -561,7 +551,11 @@ c_byte_stream::impl_t::index_of( const int val, const size_t offset, const size_
 
     n = n - offset;
 
-    const auto ptr = static_cast< unsigned char * >( std::memchr( container.data() + offset, static_cast< unsigned char >( val ), n ) );
+    const auto ptr = static_cast< unsigned char* >( std::memchr(
+        container.data() + offset,
+        static_cast< unsigned char >( val ),
+        n
+    ) );
 
     if ( ptr == nullptr )
     {
@@ -572,9 +566,10 @@ c_byte_stream::impl_t::index_of( const int val, const size_t offset, const size_
 }
 
 size_t
-c_byte_stream::impl_t::index_of( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::impl_t::index_of( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
-    if ( container.empty() || size == 0 || size > container.size() || offset >= container.size() )
+    if ( container.empty() || size == 0 || size > container.size() ||
+         offset >= container.size() )
     {
         return npos;
     }
@@ -599,7 +594,6 @@ c_byte_stream::impl_t::index_of( const unsigned char *pattern, const size_t size
     return npos;
 }
 
-
 size_t
 c_byte_stream::impl_t::index_of_back( const int val, const size_t offset, const size_t end ) const
 {
@@ -623,9 +617,10 @@ c_byte_stream::impl_t::index_of_back( const int val, const size_t offset, const 
 }
 
 size_t
-c_byte_stream::impl_t::index_of_back( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::impl_t::index_of_back( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
-    if ( container.empty() || size == 0 || size > container.size() || offset >= container.size() )
+    if ( container.empty() || size == 0 || size > container.size() ||
+         offset >= container.size() )
     {
         return npos;
     }
@@ -649,7 +644,7 @@ c_byte_stream::impl_t::index_of_back( const unsigned char *pattern, const size_t
     return npos;
 }
 
-unsigned char *
+unsigned char*
 c_byte_stream::impl_t::pointer( const size_t offset ) const
 {
     if ( container.empty() || offset >= container.size() )
@@ -657,13 +652,13 @@ c_byte_stream::impl_t::pointer( const size_t offset ) const
         return nullptr;
     }
 
-    return const_cast< unsigned char * >( container.data() + offset );
+    return const_cast< unsigned char* >( container.data() + offset );
 }
 
 bool
 c_byte_stream::impl_t::is_utf8() const
 {
-    if ( container.empty() )
+    if ( container.empty() == true )
     {
         return false;
     }
@@ -673,47 +668,118 @@ c_byte_stream::impl_t::is_utf8() const
 
     while ( i < len )
     {
-        const unsigned char c = container[ i ];
-        int n = 0;
+        unsigned char b0 = container[ i ];
 
-        if ( c <= 0x7F )
+        if ( b0 <= 0x7fu )
         {
-            // 1-byte ascii (0xxxxxxx)
-            n = 0;
+            i += 1;
+            continue;
         }
-        else if ( ( c & 0xE0 ) == 0xC0 )
+
+        if ( b0 < 0xc2u )
         {
-            // 2-byte sequence (110xxxxx)
-            n = 1;
-        }
-        else if ( ( c & 0xF0 ) == 0xE0 )
-        {
-            // 3-byte sequence (1110xxxx)
-            n = 2;
-        }
-        else if ( ( c & 0xF8 ) == 0xF0 )
-        {
-            // 4-byte sequence (11110xxx)
-            n = 3;
-        }
-        // if ( c == 0xED && i + 1 < len && ( container[ i + 1 ] & 0xA0 ) == 0xA0 )
-        // invalid surrogate half
-        else
-        {
-            // invalid utf-8 start byte
             return false;
         }
 
-        // verify that the `n` continuation bytes start with 10xxxxxx
-        for ( int j = 0; j < n; ++j )
+        if ( b0 <= 0xdfu )
         {
-            if ( ++i >= len || ( container[ i ] & 0xC0 ) != 0x80 )
+            if ( i + 1 >= len )
             {
                 return false;
             }
+
+            unsigned char b1 = container[ i + 1 ];
+            if ( ( b1 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+
+            i += 2;
+            continue;
         }
 
-        ++i;
+        if ( b0 <= 0xefu )
+        {
+            if ( i + 2 >= len )
+            {
+                return false;
+            }
+
+            unsigned char b1 = container[ i + 1 ];
+            unsigned char b2 = container[ i + 2 ];
+
+            if ( ( b1 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+            if ( ( b2 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+
+            if ( b0 == 0xe0u )
+            {
+                if ( b1 < 0xa0u )
+                {
+                    return false;
+                }
+            }
+            else if ( b0 == 0xedu )
+            {
+                if ( b1 > 0x9fu )
+                {
+                    return false;
+                }
+            }
+
+            i += 3;
+            continue;
+        }
+
+        if ( b0 <= 0xf4u )
+        {
+            if ( i + 3 >= len )
+            {
+                return false;
+            }
+
+            unsigned char b1 = container[ i + 1 ];
+            unsigned char b2 = container[ i + 2 ];
+            unsigned char b3 = container[ i + 3 ];
+
+            if ( ( b1 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+            if ( ( b2 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+            if ( ( b3 & 0xc0u ) != 0x80u )
+            {
+                return false;
+            }
+
+            if ( b0 == 0xf0u )
+            {
+                if ( b1 < 0x90u )
+                {
+                    return false;
+                }
+            }
+            else if ( b0 == 0xf4u )
+            {
+                if ( b1 > 0x8fu )
+                {
+                    return false;
+                }
+            }
+
+            i += 4;
+            continue;
+        }
+
+        return false;
     }
 
     return true;
@@ -722,102 +788,363 @@ c_byte_stream::impl_t::is_utf8() const
 c_byte_stream::e_status
 c_byte_stream::impl_t::to_utf8()
 {
-    if ( container.empty() )
+    if ( container.empty() == true )
     {
         return e_status::error;
     }
 
-    size_t i = 0;
-
-    const size_t len = container.size();
-    std::vector< unsigned char > utf8;
-
-    while ( i < len )
+    if ( is_utf8() == true )
     {
-        const unsigned char c = container[ i ];
-        int n = 0;
-
-        if ( c <= 0x7F )
-        {
-            // 1-byte ASCII
-
-            try
-            {
-                utf8.push_back( c );
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return e_status::out_of_memory;
-            }
-            catch ( ... )
-            {
-                return e_status::error;
-            }
-
-            ++i;
-        }
-        else if ( ( c & 0xE0 ) == 0xC0 )
-        {
-            // 2-byte sequence
-            n = 1;
-        }
-        else if ( ( c & 0xF0 ) == 0xE0 )
-        {
-            // 3-byte sequence
-            n = 2;
-        }
-        else if ( ( c & 0xF8 ) == 0xF0 )
-        {
-            // 4-byte sequence
-            n = 3;
-        }
-        else
-        {
-            return e_status::error; // invalid start byte
-        }
-
-        // check if enough continuation bytes exist
-        if ( i + n >= len )
-        {
-            return e_status::error; // truncated sequence
-        }
-
-        for ( int j = 1; j <= n; ++j )
-        {
-            if ( ( container[ i + j ] & 0xC0 ) != 0x80 )
-            {
-                return e_status::error; // invalid continuation byte
-            }
-        }
-
-        // append valid sequence
-        for ( int j = 0; j <= n; ++j )
-        {
-            try
-            {
-                utf8.push_back( container[ i + j ] );
-            }
-            catch ( const std::bad_alloc & )
-            {
-                return e_status::out_of_memory;
-            }
-            catch ( ... )
-            {
-                return e_status::error;
-            }
-        }
-
-        i += n + 1;
+        return e_status::ok;
     }
 
-    flush();
+    static unsigned char repl0 = 0xef;
+    static unsigned char repl1 = 0xbf;
+    static unsigned char repl2 = 0xbd;
 
-    // replace container content with converted utf-8 data
-    container = std::move( utf8 );
+    struct utf8_writer
+    {
+        static void
+        append_replacement( std::vector< unsigned char >& out )
+        {
+            out.push_back( repl0 );
+            out.push_back( repl1 );
+            out.push_back( repl2 );
+        }
 
+        static void
+        append_cp( std::vector< unsigned char >& out, unsigned int cp )
+        {
+            if ( cp <= 0x7fu )
+            {
+                out.push_back( static_cast< unsigned char >( cp ) );
+                return;
+            }
+
+            if ( cp <= 0x7ffu )
+            {
+                out.push_back( static_cast< unsigned char >( 0xc0u | ( cp >> 6 ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                return;
+            }
+
+            if ( cp <= 0xffffu )
+            {
+                out.push_back( static_cast< unsigned char >( 0xe0u | ( cp >> 12 ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 6 ) & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                return;
+            }
+
+            if ( cp <= 0x10ffffu )
+            {
+                out.push_back( static_cast< unsigned char >( 0xf0u | ( cp >> 18 ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 12 ) & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 6 ) & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                return;
+            }
+
+            append_replacement( out );
+        }
+    };
+
+    struct u16
+    {
+        static unsigned int
+        read( const unsigned char* p, bool little_endian )
+        {
+            if ( little_endian == true )
+            {
+                return static_cast< unsigned int >( p[ 0 ] ) | ( static_cast< unsigned int >( p[ 1 ] ) << 8 );
+            }
+            return static_cast< unsigned int >( p[ 1 ] ) | ( static_cast< unsigned int >( p[ 0 ] ) << 8 );
+        }
+
+        static bool
+        is_high( unsigned int v )
+        {
+            if ( v >= 0xd800u && v <= 0xdbffu )
+            {
+                return true;
+            }
+            return false;
+        }
+
+        static bool
+        is_low( unsigned int v )
+        {
+            if ( v >= 0xdc00u && v <= 0xdfffu )
+            {
+                return true;
+            }
+            return false;
+        }
+
+        static unsigned int
+        to_cp( unsigned int hi, unsigned int lo )
+        {
+            const unsigned int a = hi - 0xd800u;
+            const unsigned int b = lo - 0xdc00u;
+            return 0x10000u + ( ( a << 10 ) | b );
+        }
+    };
+
+    struct u32
+    {
+        static unsigned int
+        read( const unsigned char* p, bool little_endian )
+        {
+            if ( little_endian == true )
+            {
+                return static_cast< unsigned int >( p[ 0 ] ) |
+                    ( static_cast< unsigned int >( p[ 1 ] ) << 8 ) |
+                    ( static_cast< unsigned int >( p[ 2 ] ) << 16 ) |
+                    ( static_cast< unsigned int >( p[ 3 ] ) << 24 );
+            }
+            return static_cast< unsigned int >( p[ 3 ] ) |
+                ( static_cast< unsigned int >( p[ 2 ] ) << 8 ) |
+                ( static_cast< unsigned int >( p[ 1 ] ) << 16 ) |
+                ( static_cast< unsigned int >( p[ 0 ] ) << 24 );
+        }
+    };
+
+    const size_t len = container.size();
+    size_t start = 0;
+
+    bool has_utf8_bom = false;
+    bool has_utf16_bom = false;
+    bool has_utf32_bom = false;
+    bool little_endian = true;
+
+    if ( len >= 3 )
+    {
+        if ( container[ 0 ] == 0xefu && container[ 1 ] == 0xbbu && container[ 2 ] == 0xbfu )
+        {
+            has_utf8_bom = true;
+            start = 3;
+        }
+    }
+
+    if ( has_utf8_bom == false && len >= 4 )
+    {
+        const unsigned int b0 = container[ 0 ];
+        const unsigned int b1 = container[ 1 ];
+        const unsigned int b2 = container[ 2 ];
+        const unsigned int b3 = container[ 3 ];
+
+        if ( b0 == 0xffu && b1 == 0xfeu && b2 == 0x00u && b3 == 0x00u )
+        {
+            has_utf32_bom = true;
+            little_endian = true;
+            start = 4;
+        }
+        else if ( b0 == 0x00u && b1 == 0x00u && b2 == 0xfeu && b3 == 0xffu )
+        {
+            has_utf32_bom = true;
+            little_endian = false;
+            start = 4;
+        }
+    }
+
+    if ( has_utf8_bom == false && has_utf32_bom == false && len >= 2 )
+    {
+        const unsigned int b0 = container[ 0 ];
+        const unsigned int b1 = container[ 1 ];
+
+        if ( b0 == 0xffu && b1 == 0xfeu )
+        {
+            has_utf16_bom = true;
+            little_endian = true;
+            start = 2;
+        }
+        else if ( b0 == 0xfeu && b1 == 0xffu )
+        {
+            has_utf16_bom = true;
+            little_endian = false;
+            start = 2;
+        }
+    }
+
+    if ( has_utf8_bom == true )
+    {
+        std::vector< unsigned char > out;
+        try
+        {
+            out.insert( out.end(), container.begin() + static_cast< ptrdiff_t >( start ), container.end() );
+        }
+        catch ( const std::bad_alloc& )
+        {
+            return e_status::out_of_memory;
+        }
+        catch ( ... )
+        {
+            return e_status::error;
+        }
+        container = std::move( out );
+        return e_status::ok;
+    }
+
+    std::vector< unsigned char > out;
+    try
+    {
+        out.reserve( len + ( len / 2 ) );
+    }
+    catch ( const std::bad_alloc& )
+    {
+        return e_status::out_of_memory;
+    }
+    catch ( ... )
+    {
+        return e_status::error;
+    }
+
+    if ( has_utf32_bom == true )
+    {
+        if ( ( ( len - start ) % 4 ) != 0 )
+        {
+            return e_status::error;
+        }
+
+        size_t i = start;
+        while ( i + 3 < len )
+        {
+            const unsigned int cp = u32::read( &container[ i ], little_endian );
+
+            if ( cp > 0x10ffffu )
+            {
+                utf8_writer::append_replacement( out );
+            }
+            else if ( cp >= 0xd800u && cp <= 0xdfffu )
+            {
+                utf8_writer::append_replacement( out );
+            }
+            else
+            {
+                utf8_writer::append_cp( out, cp );
+            }
+
+            i += 4;
+        }
+
+        container = std::move( out );
+        return e_status::ok;
+    }
+
+    bool utf16_attempt = false;
+    bool utf16_le = true;
+    size_t utf16_start = 0;
+
+    if ( has_utf16_bom == true )
+    {
+        utf16_attempt = true;
+        utf16_le = little_endian;
+        utf16_start = start;
+    }
+    else
+    {
+        size_t probe = len;
+        if ( probe > 256 )
+        {
+            probe = 256;
+        }
+
+        size_t pairs = 0;
+        size_t zero_even = 0;
+        size_t zero_odd = 0;
+
+        size_t pi = 0;
+        while ( pi + 1 < probe )
+        {
+            if ( container[ pi ] == 0 )
+            {
+                zero_even += 1;
+            }
+            if ( container[ pi + 1 ] == 0 )
+            {
+                zero_odd += 1;
+            }
+            pairs += 1;
+            pi += 2;
+        }
+
+        if ( pairs > 0 )
+        {
+            if ( zero_odd > ( pairs / 3 ) )
+            {
+                utf16_attempt = true;
+                utf16_le = true;
+                utf16_start = 0;
+            }
+            else if ( zero_even > ( pairs / 3 ) )
+            {
+                utf16_attempt = true;
+                utf16_le = false;
+                utf16_start = 0;
+            }
+        }
+    }
+
+    if ( utf16_attempt == true )
+    {
+        if ( ( ( len - utf16_start ) % 2 ) == 0 )
+        {
+            size_t i = utf16_start;
+            while ( i + 1 < len )
+            {
+                const unsigned int v = u16::read( &container[ i ], utf16_le );
+                i += 2;
+
+                if ( u16::is_high( v ) == true )
+                {
+                    if ( i + 1 >= len )
+                    {
+                        utf8_writer::append_replacement( out );
+                        container = std::move( out );
+                        return e_status::ok;
+                    }
+
+                    const unsigned int v2 = u16::read( &container[ i ], utf16_le );
+                    if ( u16::is_low( v2 ) == true )
+                    {
+                        const unsigned int cp = u16::to_cp( v, v2 );
+                        utf8_writer::append_cp( out, cp );
+                        i += 2;
+                    }
+                    else
+                    {
+                        utf8_writer::append_replacement( out );
+                    }
+                }
+                else if ( u16::is_low( v ) == true )
+                {
+                    utf8_writer::append_replacement( out );
+                }
+                else
+                {
+                    utf8_writer::append_cp( out, v );
+                }
+            }
+
+            container = std::move( out );
+            return e_status::ok;
+        }
+    }
+
+    out.clear();
+    out.reserve( len + ( len / 2 ) );
+
+    size_t i = 0;
+    while ( i < len )
+    {
+        const unsigned int cp = container[ i ];
+        utf8_writer::append_cp( out, cp );
+        i += 1;
+    }
+
+    container = std::move( out );
     return e_status::ok;
 }
-
 
 c_byte_stream::e_status
 c_byte_stream::push( const unsigned char value ) const
@@ -847,7 +1174,7 @@ c_byte_stream::push_async( const unsigned char value ) const
 }
 
 c_byte_stream::e_status
-c_byte_stream::push( const unsigned char *source, const size_t size ) const
+c_byte_stream::push( const unsigned char* source, const size_t size ) const
 {
     impl->wait_lock();
 
@@ -859,7 +1186,7 @@ c_byte_stream::push( const unsigned char *source, const size_t size ) const
 }
 
 c_byte_stream::e_status
-c_byte_stream::push_async( const unsigned char *source, const size_t size ) const
+c_byte_stream::push_async( const unsigned char* source, const size_t size ) const
 {
     if ( !impl->try_lock() )
     {
@@ -901,7 +1228,7 @@ c_byte_stream::push_back_async( const unsigned char value ) const
 }
 
 c_byte_stream::e_status
-c_byte_stream::push_back( const unsigned char *source, const size_t size ) const
+c_byte_stream::push_back( const unsigned char* source, const size_t size ) const
 {
     impl->wait_lock();
 
@@ -913,7 +1240,7 @@ c_byte_stream::push_back( const unsigned char *source, const size_t size ) const
 }
 
 c_byte_stream::e_status
-c_byte_stream::push_back_async( const unsigned char *source, const size_t size ) const
+c_byte_stream::push_back_async( const unsigned char* source, const size_t size ) const
 {
     if ( !impl->try_lock() )
     {
@@ -928,7 +1255,7 @@ c_byte_stream::push_back_async( const unsigned char *source, const size_t size )
 }
 
 c_byte_stream::e_status
-c_byte_stream::pull( unsigned char *destination, size_t &size, const size_t offset ) const
+c_byte_stream::pull( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     impl->wait_lock();
 
@@ -940,7 +1267,7 @@ c_byte_stream::pull( unsigned char *destination, size_t &size, const size_t offs
 }
 
 c_byte_stream::e_status
-c_byte_stream::pull_async( unsigned char *destination, size_t &size, const size_t offset ) const
+c_byte_stream::pull_async( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     if ( !impl->try_lock() )
     {
@@ -955,7 +1282,7 @@ c_byte_stream::pull_async( unsigned char *destination, size_t &size, const size_
 }
 
 c_byte_stream::e_status
-c_byte_stream::pull_back( unsigned char *destination, size_t &size, const size_t offset ) const
+c_byte_stream::pull_back( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     impl->wait_lock();
 
@@ -967,7 +1294,7 @@ c_byte_stream::pull_back( unsigned char *destination, size_t &size, const size_t
 }
 
 c_byte_stream::e_status
-c_byte_stream::pull_back_async( unsigned char *destination, size_t &size, const size_t offset ) const
+c_byte_stream::pull_back_async( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     if ( !impl->try_lock() )
     {
@@ -982,7 +1309,7 @@ c_byte_stream::pull_back_async( unsigned char *destination, size_t &size, const 
 }
 
 c_byte_stream::e_status
-c_byte_stream::move( const c_byte_stream *destination, const size_t size, const size_t offset ) const
+c_byte_stream::move( const c_byte_stream* destination, const size_t size, const size_t offset ) const
 {
     impl->wait_lock();
 
@@ -994,7 +1321,7 @@ c_byte_stream::move( const c_byte_stream *destination, const size_t size, const 
 }
 
 c_byte_stream::e_status
-c_byte_stream::move_async( const c_byte_stream *destination, const size_t size, const size_t offset ) const
+c_byte_stream::move_async( const c_byte_stream* destination, const size_t size, const size_t offset ) const
 {
     if ( !impl->try_lock() )
     {
@@ -1009,7 +1336,7 @@ c_byte_stream::move_async( const c_byte_stream *destination, const size_t size, 
 }
 
 c_byte_stream::e_status
-c_byte_stream::copy( unsigned char *destination, const size_t size, size_t *available, const size_t offset ) const
+c_byte_stream::copy( unsigned char* destination, const size_t size, size_t* available, const size_t offset ) const
 {
     impl->wait_lock();
 
@@ -1021,7 +1348,7 @@ c_byte_stream::copy( unsigned char *destination, const size_t size, size_t *avai
 }
 
 c_byte_stream::e_status
-c_byte_stream::copy_async( unsigned char *destination, const size_t size, size_t *available, const size_t offset ) const
+c_byte_stream::copy_async( unsigned char* destination, const size_t size, size_t* available, const size_t offset ) const
 {
     if ( !impl->try_lock() )
     {
@@ -1035,7 +1362,7 @@ c_byte_stream::copy_async( unsigned char *destination, const size_t size, size_t
     return status;
 }
 
-unsigned char *
+unsigned char*
 c_byte_stream::pointer( const size_t offset ) const
 {
     return impl->pointer( offset );
@@ -1148,7 +1475,7 @@ c_byte_stream::flush_async() const
 }
 
 int
-c_byte_stream::compare( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::compare( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
     impl->wait_lock();
 
@@ -1160,7 +1487,7 @@ c_byte_stream::compare( const unsigned char *pattern, const size_t size, const s
 }
 
 int
-c_byte_stream::compare_async( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::compare_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
     if ( !impl->try_lock() )
     {
@@ -1202,7 +1529,7 @@ c_byte_stream::index_of_async( const int val, const size_t offset, const size_t 
 }
 
 size_t
-c_byte_stream::index_of( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::index_of( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
     impl->wait_lock();
 
@@ -1214,7 +1541,7 @@ c_byte_stream::index_of( const unsigned char *pattern, const size_t size, const 
 }
 
 size_t
-c_byte_stream::index_of_async( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::index_of_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
     if ( !impl->try_lock() )
     {
@@ -1241,18 +1568,6 @@ c_byte_stream::index_of_back( const int val, const size_t offset, const size_t e
 }
 
 size_t
-c_byte_stream::index_of_back( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
-{
-    impl->wait_lock();
-
-    const size_t pos = impl->index_of_back( pattern, size, offset, end );
-
-    impl->unlock();
-
-    return pos;
-}
-
-size_t
 c_byte_stream::index_of_back_async( const int val, const size_t offset, const size_t end ) const
 {
     if ( !impl->try_lock() )
@@ -1268,7 +1583,19 @@ c_byte_stream::index_of_back_async( const int val, const size_t offset, const si
 }
 
 size_t
-c_byte_stream::index_of_back_async( const unsigned char *pattern, const size_t size, const size_t offset, const size_t end ) const
+c_byte_stream::index_of_back( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
+{
+    impl->wait_lock();
+
+    const size_t pos = impl->index_of_back( pattern, size, offset, end );
+
+    impl->unlock();
+
+    return pos;
+}
+
+size_t
+c_byte_stream::index_of_back_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
     if ( !impl->try_lock() )
     {
@@ -1288,12 +1615,11 @@ c_byte_stream::size() const
     return impl->container.size();
 }
 
-std::vector< unsigned char > *
+std::vector< unsigned char >*
 c_byte_stream::container() const
 {
     return &impl->container;
 }
-
 
 bool
 c_byte_stream::available() const
