@@ -926,7 +926,7 @@ c_byte_stream::impl_t::to_utf8()
         }
     }
 
-    if ( has_utf8_bom == false && len >= 4 )
+    if ( !has_utf8_bom && len >= 4 )
     {
         const unsigned int b0 = container[ 0 ];
         const unsigned int b1 = container[ 1 ];
@@ -947,7 +947,7 @@ c_byte_stream::impl_t::to_utf8()
         }
     }
 
-    if ( has_utf8_bom == false && has_utf32_bom == false && len >= 2 )
+    if ( !has_utf8_bom && !has_utf32_bom && len >= 2 )
     {
         const unsigned int b0 = container[ 0 ];
         const unsigned int b1 = container[ 1 ];

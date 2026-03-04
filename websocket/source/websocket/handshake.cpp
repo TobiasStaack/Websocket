@@ -45,29 +45,31 @@ SOFTWARE.
  * @return The length of the string (not including the null terminator).
  */
 constexpr size_t
-constexpr_strlen( const char *s )
+constexpr_strlen( const char* s )
 {
     return *s ? 1 + constexpr_strlen( s + 1 ) : 0;
 }
 
 static std::string
-string_to_lower( const std::string &str )
+string_to_lower( const std::string& str )
 {
     std::string result = str;
 
     std::transform( result.begin(), result.end(), result.begin(), []( const unsigned char c )
-        { return std::tolower( c ); } );
+    {
+        return std::tolower( c );
+    } );
 
     return result;
 }
 
 static bool
-string_contains_case_insensitive( const std::string &mainStr, const std::string &subStr )
+string_contains_case_insensitive( const std::string& main_str, const std::string& sub_str )
 {
-    const std::string lowerMainStr = string_to_lower( mainStr );
-    const std::string lowerSubStr = string_to_lower( subStr );
+    const std::string lower_main_str = string_to_lower( main_str );
+    const std::string lower_sub_str = string_to_lower( sub_str );
 
-    return lowerMainStr.find( lowerSubStr ) != std::string::npos;
+    return lower_main_str.find( lower_sub_str ) != std::string::npos;
 }
 
 /**
@@ -87,11 +89,15 @@ static constexpr char WS_MAGIC[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 static constexpr size_t WS_MAGIC_SIZE = constexpr_strlen( WS_MAGIC );
 
 c_ws_handshake::e_status
-c_ws_handshake::random( const size_t count, std::string &output )
+c_ws_handshake::random( const size_t count, std::string& output )
 {
-    constexpr auto pers = "097290aafe141434bd15eace820031b16f40a4677979a386919bad2ba57f1547";
+    constexpr const char* pers = "097290aafe141434bd15eace820031b16f40a4677979a386919bad2ba57f1547";
 
-    auto *block = static_cast< unsigned char * >( malloc( sizeof( unsigned char ) * count ) );
+    unsigned char* block = static_cast< unsigned char* >( malloc( sizeof( unsigned char ) * count ) );
+    if ( block == nullptr )
+    {
+        return error;
+    }
 
     mbedtls_entropy_context entropy;
     mbedtls_ctr_drbg_context ctr_drbg;
@@ -99,10 +105,11 @@ c_ws_handshake::random( const size_t count, std::string &output )
     mbedtls_entropy_init( &entropy );
     mbedtls_ctr_drbg_init( &ctr_drbg );
 
-    if ( mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, reinterpret_cast< const unsigned char * >( pers ), strlen( pers ) ) != 0 )
+    if ( mbedtls_ctr_drbg_seed( &ctr_drbg, mbedtls_entropy_func, &entropy, reinterpret_cast< const unsigned char* >( pers ), std::strlen( pers ) ) != 0 )
     {
         mbedtls_ctr_drbg_free( &ctr_drbg );
         mbedtls_entropy_free( &entropy );
+        free( block );
         return error;
     }
 
@@ -110,19 +117,21 @@ c_ws_handshake::random( const size_t count, std::string &output )
     {
         mbedtls_ctr_drbg_free( &ctr_drbg );
         mbedtls_entropy_free( &entropy );
+        free( block );
         return error;
     }
 
     mbedtls_ctr_drbg_free( &ctr_drbg );
     mbedtls_entropy_free( &entropy );
 
-    output.assign( reinterpret_cast< char * >( block ) );
+    output.assign( reinterpret_cast< const char* >( block ), count );
+    free( block );
 
     return ok;
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::secret( const std::string &input, std::string &output )
+c_ws_handshake::secret( const std::string& input, std::string& output )
 {
     // create sha1 hash
     unsigned char hash[ 20 ];
@@ -132,44 +141,49 @@ c_ws_handshake::secret( const std::string &input, std::string &output )
 
     if ( mbedtls_sha1_starts( &sha1_ctx ) != 0 )
     {
+        mbedtls_sha1_free( &sha1_ctx );
         return error;
     }
 
-    if ( mbedtls_sha1_update( &sha1_ctx, reinterpret_cast< const unsigned char * >( input.c_str() ), input.size() ) != 0 )
+    if ( mbedtls_sha1_update( &sha1_ctx, reinterpret_cast< const unsigned char* >( input.c_str() ), input.size() ) != 0 )
     {
+        mbedtls_sha1_free( &sha1_ctx );
         return error;
     }
 
-    if ( mbedtls_sha1_update( &sha1_ctx, reinterpret_cast< const unsigned char * >( WS_MAGIC ), WS_MAGIC_SIZE ) != 0 )
+    if ( mbedtls_sha1_update( &sha1_ctx, reinterpret_cast< const unsigned char* >( WS_MAGIC ), WS_MAGIC_SIZE ) != 0 )
     {
+        mbedtls_sha1_free( &sha1_ctx );
         return error;
     }
 
     if ( mbedtls_sha1_finish( &sha1_ctx, hash ) != 0 )
     {
+        mbedtls_sha1_free( &sha1_ctx );
         return error;
     }
 
     mbedtls_sha1_free( &sha1_ctx );
 
     // base64 encode sha1 hash
-    unsigned char b64[ 30 ];
+    unsigned char b64[ 64 ];
     size_t olen = 0;
-    if ( mbedtls_base64_encode( b64, 30, &olen, hash, 20 ) != 0 )
+
+    if ( mbedtls_base64_encode( b64, sizeof( b64 ), &olen, hash, 20 ) != 0 )
     {
         return error;
     }
 
     // assign base64 encoded to output
-    output.assign( reinterpret_cast< const char * >( b64 ), 30 );
+    output.assign( reinterpret_cast< const char* >( b64 ), olen );
 
     return ok;
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::create( const char *host, const char *origin, const char *channel, c_byte_stream *output, std::string &out_accept_key, const ws_extensions_t *extensions )
+c_ws_handshake::create( const char* host, const char* origin, const char* channel, c_byte_stream* output, std::string& out_accept_key, const ws_extensions_t* extensions )
 {
-    if ( !output )
+    if ( output == nullptr )
     {
         return error;
     }
@@ -186,7 +200,7 @@ c_ws_handshake::create( const char *host, const char *origin, const char *channe
     unsigned char b64[ 45 ];
     size_t olen = 0;
 
-    if ( mbedtls_base64_encode( b64, sizeof( b64 ), &olen, reinterpret_cast< const unsigned char * >( sec_websocket_key.c_str() ), sec_websocket_key.size() ) != 0 )
+    if ( mbedtls_base64_encode( b64, sizeof( b64 ), &olen, reinterpret_cast< const unsigned char* >( sec_websocket_key.c_str() ), sec_websocket_key.size() ) != 0 )
     {
         return error;
     }
@@ -194,7 +208,7 @@ c_ws_handshake::create( const char *host, const char *origin, const char *channe
     // create accept-key out of secret-key
     std::string accept_key;
 
-    if ( secret( std::string( reinterpret_cast< const char * >( b64 ), olen ), accept_key ) != ok )
+    if ( secret( std::string( reinterpret_cast< const char* >( b64 ), olen ), accept_key ) != ok )
     {
         return error;
     }
@@ -211,7 +225,7 @@ c_ws_handshake::create( const char *host, const char *origin, const char *channe
 
     if ( extensions && extensions->permessage_deflate.enabled )
     {
-        request << "Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits=" << static_cast< int >( extensions->permessage_deflate.window_bits ) << "\r\n";
+        request << "Sec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover; client_max_window_bits=" << static_cast< int >( extensions->permessage_deflate.window_bits ) << "\r\n";
     }
 
     if ( origin )
@@ -232,14 +246,14 @@ c_ws_handshake::create( const char *host, const char *origin, const char *channe
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::client( const char *accept_key, const c_byte_stream *input, c_byte_stream *output, ws_extensions_t *extensions )
+c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_byte_stream* output, ws_extensions_t* extensions )
 {
-    if ( !output )
+    if ( output == nullptr )
     {
         return error;
     }
 
-    if ( !input )
+    if ( input == nullptr )
     {
         c_http::respond( c_http::e_status_code::http_status_code_internal_server_error, output );
         return error;
@@ -271,12 +285,12 @@ c_ws_handshake::client( const char *accept_key, const c_byte_stream *input, c_by
         return error;
     }
 
-    const auto headers = http.get_headers();
+    const std::map< std::string, std::string > headers = http.get_headers();
 
     // verify required attributes are present
     if ( headers.find( "Upgrade" ) == headers.end() ||
-        headers.find( "Connection" ) == headers.end() ||
-        headers.find( "Sec-WebSocket-Accept" ) == headers.end() )
+         headers.find( "Connection" ) == headers.end() ||
+         headers.find( "Sec-WebSocket-Accept" ) == headers.end() )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -292,9 +306,9 @@ c_ws_handshake::client( const char *accept_key, const c_byte_stream *input, c_by
     }
 
     // verify |Connection| header field contains upgrade
-    const std::string header_connetion = headers.at( "Connection" );
+    const std::string header_connection = headers.at( "Connection" );
 
-    if ( !string_contains_case_insensitive( header_connetion, "upgrade" ) )
+    if ( !string_contains_case_insensitive( header_connection, "upgrade" ) )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -313,40 +327,68 @@ c_ws_handshake::client( const char *accept_key, const c_byte_stream *input, c_by
     {
         const std::string header_extensions = headers.at( "Sec-WebSocket-Extensions" );
 
-        // check if permessage-deflate is enabled
+        // check if permessage-deflate is enabled and enforce no-context-takeover (matches per-message zlib state)
         if ( header_extensions.find( "permessage-deflate" ) != std::string::npos )
         {
-            // look for client_max_window_bits
+            bool got_client_no_context_takeover = false;
+            bool got_server_no_context_takeover = false;
+
+            if ( header_extensions.find( "client_no_context_takeover" ) != std::string::npos )
+            {
+                got_client_no_context_takeover = true;
+            }
+
+            if ( header_extensions.find( "server_no_context_takeover" ) != std::string::npos )
+            {
+                got_server_no_context_takeover = true;
+            }
+
+            int server_max_window_bits = 15;
+
             const size_t pos = header_extensions.find( "server_max_window_bits" );
             if ( pos != std::string::npos )
             {
-                // find the '=' after "client_max_window_bits" and parse the number after it
                 const size_t equals_pos = header_extensions.find( '=', pos );
                 if ( equals_pos != std::string::npos )
                 {
-                    // extract and convert the window bits value
-                    int client_max_window_bits = 0;
+                    size_t end_pos = header_extensions.find_first_of( ";, \r\n", equals_pos + 1 );
+                    if ( end_pos == std::string::npos )
+                    {
+                        end_pos = header_extensions.size();
+                    }
 
                     try
                     {
-                        client_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1 ) );
+                        server_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1, end_pos - ( equals_pos + 1 ) ) );
                     }
                     catch ( ... )
                     {
                         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
-                    }
-
-                    // store the extracted value if client_extensions is available
-                    if ( extensions )
-                    {
-                        extensions->permessage_deflate.window_bits = client_max_window_bits;
+                        return error;
                     }
                 }
             }
 
             if ( extensions )
             {
-                extensions->permessage_deflate.enabled = true;
+                if ( got_client_no_context_takeover == true && got_server_no_context_takeover == true )
+                {
+                    if ( server_max_window_bits < 8 )
+                    {
+                        server_max_window_bits = 8;
+                    }
+                    if ( server_max_window_bits > 15 )
+                    {
+                        server_max_window_bits = 15;
+                    }
+
+                    extensions->permessage_deflate.enabled = true;
+                    extensions->permessage_deflate.window_bits = static_cast< unsigned char >( server_max_window_bits );
+                }
+                else
+                {
+                    extensions->permessage_deflate.enabled = false;
+                }
             }
         }
     }
@@ -355,14 +397,14 @@ c_ws_handshake::client( const char *accept_key, const c_byte_stream *input, c_by
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::server( const char *host, const char *origin, const c_byte_stream *input, c_byte_stream *output, const ws_extensions_t *server_extensions, ws_extensions_t *client_extensions )
+c_ws_handshake::server( const char* host, const char* origin, const c_byte_stream* input, c_byte_stream* output, const ws_extensions_t* server_extensions, ws_extensions_t* client_extensions )
 {
-    if ( !output )
+    if ( output == nullptr )
     {
         return error;
     }
 
-    if ( !input )
+    if ( input == nullptr )
     {
         c_http::respond( c_http::e_status_code::http_status_code_internal_server_error, output );
         return error;
@@ -388,14 +430,14 @@ c_ws_handshake::server( const char *host, const char *origin, const c_byte_strea
         return error;
     }
 
-    const auto headers = http.get_headers();
+    const std::map< std::string, std::string > headers = http.get_headers();
 
     // verify required attributes are present
     if ( headers.find( "Host" ) == headers.end() ||
-        headers.find( "Upgrade" ) == headers.end() ||
-        headers.find( "Connection" ) == headers.end() ||
-        headers.find( "Sec-WebSocket-Key" ) == headers.end() ||
-        headers.find( "Sec-WebSocket-Version" ) == headers.end() )
+         headers.find( "Upgrade" ) == headers.end() ||
+         headers.find( "Connection" ) == headers.end() ||
+         headers.find( "Sec-WebSocket-Key" ) == headers.end() ||
+         headers.find( "Sec-WebSocket-Version" ) == headers.end() )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -420,9 +462,9 @@ c_ws_handshake::server( const char *host, const char *origin, const c_byte_strea
     }
 
     // verify |Connection| header field contains upgrade
-    const std::string header_connetion = headers.at( "Connection" );
+    const std::string header_connection = headers.at( "Connection" );
 
-    if ( !string_contains_case_insensitive( header_connetion, "upgrade" ) )
+    if ( !string_contains_case_insensitive( header_connection, "upgrade" ) )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -462,47 +504,79 @@ c_ws_handshake::server( const char *host, const char *origin, const c_byte_strea
         speak, ordered by preference.
     */
 
+    if ( client_extensions )
+    {
+        client_extensions->permessage_deflate.enabled = false;
+    }
+
     if ( headers.find( "Sec-WebSocket-Extensions" ) != headers.end() )
     {
         const std::string header_extensions = headers.at( "Sec-WebSocket-Extensions" );
 
-        // check if permessage-deflate is enabled
+        // check if permessage-deflate is requested and enforce no-context-takeover (matches per-message zlib state)
         if ( header_extensions.find( "permessage-deflate" ) != std::string::npos )
         {
-            // look for client_max_window_bits
+            bool req_client_no_context_takeover = false;
+            bool req_server_no_context_takeover = false;
+
+            if ( header_extensions.find( "client_no_context_takeover" ) != std::string::npos )
+            {
+                req_client_no_context_takeover = true;
+            }
+
+            if ( header_extensions.find( "server_no_context_takeover" ) != std::string::npos )
+            {
+                req_server_no_context_takeover = true;
+            }
+
+            int client_max_window_bits = 15;
+
             const size_t pos = header_extensions.find( "client_max_window_bits" );
             if ( pos != std::string::npos )
             {
-                // find the '=' after "client_max_window_bits" and parse the number after it
                 const size_t equals_pos = header_extensions.find( '=', pos );
                 if ( equals_pos != std::string::npos )
                 {
-                    // extract and convert the window bits value
-                    int client_max_window_bits = 0;
+                    size_t end_pos = header_extensions.find_first_of( ";, \r\n", equals_pos + 1 );
+                    if ( end_pos == std::string::npos )
+                    {
+                        end_pos = header_extensions.size();
+                    }
 
                     try
                     {
-                        client_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1 ) );
+                        client_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1, end_pos - ( equals_pos + 1 ) ) );
                     }
                     catch ( ... )
                     {
                         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
-                    }
-
-                    // store the extracted value if client_extensions is available
-                    if ( client_extensions )
-                    {
-                        client_extensions->permessage_deflate.window_bits = client_max_window_bits;
+                        return error;
                     }
                 }
             }
 
-            // set the enabled flag based on server capabilities
+            if ( client_max_window_bits < 8 )
+            {
+                client_max_window_bits = 8;
+            }
+            if ( client_max_window_bits > 15 )
+            {
+                client_max_window_bits = 15;
+            }
+
             if ( client_extensions )
             {
-                if ( server_extensions )
+                if ( server_extensions && server_extensions->permessage_deflate.enabled )
                 {
-                    client_extensions->permessage_deflate.enabled = server_extensions->permessage_deflate.enabled;
+                    if ( req_client_no_context_takeover == true && req_server_no_context_takeover == true )
+                    {
+                        client_extensions->permessage_deflate.enabled = true;
+                        client_extensions->permessage_deflate.window_bits = static_cast< unsigned char >( client_max_window_bits );
+                    }
+                    else
+                    {
+                        client_extensions->permessage_deflate.enabled = false;
+                    }
                 }
                 else
                 {
@@ -513,10 +587,10 @@ c_ws_handshake::server( const char *host, const char *origin, const c_byte_strea
     }
 
     // generate |Sec-WebSocket-Accept| out of |Sec-WebSocket-Key|
-    const std::string secret = headers.at( "Sec-WebSocket-Key" );
+    const std::string secret_key = headers.at( "Sec-WebSocket-Key" );
     std::string accept;
 
-    if ( c_ws_handshake::secret( secret, accept ) != ok )
+    if ( secret( secret_key, accept ) != ok )
     {
         c_http::respond( c_http::e_status_code::http_status_code_internal_server_error, output );
         return error;
@@ -529,14 +603,14 @@ c_ws_handshake::server( const char *host, const char *origin, const c_byte_strea
 
     if ( client_extensions && client_extensions->permessage_deflate.enabled )
     {
+        *output << "Sec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover";
+
         if ( server_extensions && server_extensions->permessage_deflate.window_bits != client_extensions->permessage_deflate.window_bits )
         {
-            *output << "Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=" << static_cast< int >( server_extensions->permessage_deflate.window_bits ) << "\r\n";
+            *output << "; server_max_window_bits=" << static_cast< int >( server_extensions->permessage_deflate.window_bits );
         }
-        else
-        {
-            *output << "Sec-WebSocket-Extensions: permessage-deflate\r\n";
-        }
+
+        *output << "\r\n";
     }
 
     *output << "\r\n";

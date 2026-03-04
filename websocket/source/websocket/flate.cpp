@@ -29,7 +29,7 @@ SOFTWARE.
 c_flate::e_status
 c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    if ( !input || !output )
+    if ( input == nullptr || output == nullptr )
     {
         return e_status::status_error;
     }
@@ -61,7 +61,7 @@ c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const
             in_left -= chunk;
         }
 
-        const int flush = in_left == 0 ? Z_FINISH : Z_NO_FLUSH;
+        const int flush = ( in_left == 0 ) ? Z_FINISH : Z_NO_FLUSH;
 
         do
         {
@@ -69,6 +69,7 @@ c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const
             strm.avail_out = static_cast< uInt >( buffer.size() );
 
             ret = ::deflate( &strm, flush );
+
             if ( ret == Z_STREAM_ERROR )
             {
                 deflateEnd( &strm );
@@ -87,16 +88,16 @@ c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const
         }
         while ( strm.avail_out == 0 );
     }
-    while ( ret != Z_STREAM_END && ( in_left > 0 || strm.avail_in > 0 ) );
+    while ( ret != Z_STREAM_END );
 
     deflateEnd( &strm );
-    return ret == Z_STREAM_END ? e_status::status_ok : e_status::status_error;
+    return e_status::status_ok;
 }
 
 c_flate::e_status
 c_flate::inflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    if ( !input || !output )
+    if ( input == nullptr || output == nullptr )
     {
         return e_status::status_error;
     }
@@ -141,7 +142,7 @@ c_flate::inflate( const c_byte_stream* input, const c_byte_stream* output, const
 
             ret = ::inflate( &strm, Z_NO_FLUSH );
 
-            if ( ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR )
+            if ( ret == Z_STREAM_ERROR || ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR )
             {
                 inflateEnd( &strm );
                 return e_status::status_error;
@@ -166,5 +167,9 @@ c_flate::inflate( const c_byte_stream* input, const c_byte_stream* output, const
     }
 
     inflateEnd( &strm );
-    return e_status::status_ok;
+    if ( ret == Z_STREAM_END )
+    {
+        return e_status::status_ok;
+    }
+    return e_status::status_error;
 }
