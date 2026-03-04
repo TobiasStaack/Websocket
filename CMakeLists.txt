@@ -4,7 +4,7 @@ project(websocket VERSION 1.0)
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-implicit-function-declaration")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
 
 set(CMAKE_CONFIGURATION_TYPES "debug;release" CACHE STRING "Configurations" FORCE)
 
@@ -18,131 +18,131 @@ include_directories(
 )
 
 set(MBEDTLS
-	websocket/library/mbedtls/aes.c
-    websocket/library/mbedtls/aesni.c
-    websocket/library/mbedtls/aria.c
-    websocket/library/mbedtls/asn1parse.c
-    websocket/library/mbedtls/asn1write.c
-    websocket/library/mbedtls/base64.c
-    websocket/library/mbedtls/bignum.c
-    websocket/library/mbedtls/camellia.c
-    websocket/library/mbedtls/ccm.c
-    websocket/library/mbedtls/chacha20.c
-    websocket/library/mbedtls/chachapoly.c
-    websocket/library/mbedtls/cipher.c
-    websocket/library/mbedtls/cipher_wrap.c
-    websocket/library/mbedtls/cmac.c
-    websocket/library/mbedtls/constant_time.c
-    websocket/library/mbedtls/ctr_drbg.c
-    websocket/library/mbedtls/debug.c
-    websocket/library/mbedtls/des.c
-    websocket/library/mbedtls/dhm.c
-    websocket/library/mbedtls/ecdh.c
-    websocket/library/mbedtls/ecdsa.c
-    websocket/library/mbedtls/ecjpake.c
-    websocket/library/mbedtls/ecp.c
-    websocket/library/mbedtls/ecp_curves.c
-    websocket/library/mbedtls/entropy.c
-    websocket/library/mbedtls/entropy_poll.c
-    websocket/library/mbedtls/error.c
-    websocket/library/mbedtls/gcm.c
-    websocket/library/mbedtls/hkdf.c
-    websocket/library/mbedtls/hmac_drbg.c
-    websocket/library/mbedtls/md.c
-    websocket/library/mbedtls/md5.c
-    websocket/library/mbedtls/memory_buffer_alloc.c
-    websocket/library/mbedtls/mps_reader.c
-    websocket/library/mbedtls/mps_trace.c
-    websocket/library/mbedtls/net_sockets.c
-    websocket/library/mbedtls/nist_kw.c
-    websocket/library/mbedtls/oid.c
-    websocket/library/mbedtls/padlock.c
-    websocket/library/mbedtls/pem.c
-    websocket/library/mbedtls/pk.c
-    websocket/library/mbedtls/pkcs12.c
-    websocket/library/mbedtls/pkcs5.c
-    websocket/library/mbedtls/pkparse.c
-    websocket/library/mbedtls/pkwrite.c
-    websocket/library/mbedtls/pk_wrap.c
-    websocket/library/mbedtls/platform.c
-    websocket/library/mbedtls/platform_util.c
-    websocket/library/mbedtls/poly1305.c
-    websocket/library/mbedtls/psa_crypto.c
-    websocket/library/mbedtls/psa_crypto_aead.c
-    websocket/library/mbedtls/psa_crypto_cipher.c
-    websocket/library/mbedtls/psa_crypto_client.c
-    websocket/library/mbedtls/psa_crypto_driver_wrappers.c
-    websocket/library/mbedtls/psa_crypto_ecp.c
-    websocket/library/mbedtls/psa_crypto_hash.c
-    websocket/library/mbedtls/psa_crypto_mac.c
-    websocket/library/mbedtls/psa_crypto_rsa.c
-    websocket/library/mbedtls/psa_crypto_se.c
-    websocket/library/mbedtls/psa_crypto_slot_management.c
-    websocket/library/mbedtls/psa_crypto_storage.c
-    websocket/library/mbedtls/psa_its_file.c
-    websocket/library/mbedtls/ripemd160.c
-    websocket/library/mbedtls/rsa.c
-    websocket/library/mbedtls/rsa_alt_helpers.c
-    websocket/library/mbedtls/sha1.c
-    websocket/library/mbedtls/sha256.c
-    websocket/library/mbedtls/sha512.c
-    websocket/library/mbedtls/ssl_cache.c
-    websocket/library/mbedtls/ssl_ciphersuites.c
-    websocket/library/mbedtls/ssl_cli.c
-    websocket/library/mbedtls/ssl_cookie.c
-    websocket/library/mbedtls/ssl_debug_helpers_generated.c
-    websocket/library/mbedtls/ssl_msg.c
-    websocket/library/mbedtls/ssl_srv.c
-    websocket/library/mbedtls/ssl_ticket.c
-    websocket/library/mbedtls/ssl_tls.c
-    websocket/library/mbedtls/ssl_tls13_client.c
-    websocket/library/mbedtls/ssl_tls13_generic.c
-    websocket/library/mbedtls/ssl_tls13_keys.c
-    websocket/library/mbedtls/ssl_tls13_server.c
-    websocket/library/mbedtls/threading.c
-    websocket/library/mbedtls/timing.c
-    websocket/library/mbedtls/version.c
-    websocket/library/mbedtls/version_features.c
-    websocket/library/mbedtls/x509.c
-    websocket/library/mbedtls/x509write_crt.c
-    websocket/library/mbedtls/x509write_csr.c
-    websocket/library/mbedtls/x509_create.c
-    websocket/library/mbedtls/x509_crl.c
-    websocket/library/mbedtls/x509_crt.c
-    websocket/library/mbedtls/x509_csr.c
+        websocket/source/mbedtls/aes.c
+        websocket/source/mbedtls/aesni.c
+        websocket/source/mbedtls/aria.c
+        websocket/source/mbedtls/asn1parse.c
+        websocket/source/mbedtls/asn1write.c
+        websocket/source/mbedtls/base64.c
+        websocket/source/mbedtls/bignum.c
+        websocket/source/mbedtls/camellia.c
+        websocket/source/mbedtls/ccm.c
+        websocket/source/mbedtls/chacha20.c
+        websocket/source/mbedtls/chachapoly.c
+        websocket/source/mbedtls/cipher.c
+        websocket/source/mbedtls/cipher_wrap.c
+        websocket/source/mbedtls/cmac.c
+        websocket/source/mbedtls/constant_time.c
+        websocket/source/mbedtls/ctr_drbg.c
+        websocket/source/mbedtls/debug.c
+        websocket/source/mbedtls/des.c
+        websocket/source/mbedtls/dhm.c
+        websocket/source/mbedtls/ecdh.c
+        websocket/source/mbedtls/ecdsa.c
+        websocket/source/mbedtls/ecjpake.c
+        websocket/source/mbedtls/ecp.c
+        websocket/source/mbedtls/ecp_curves.c
+        websocket/source/mbedtls/entropy.c
+        websocket/source/mbedtls/entropy_poll.c
+        websocket/source/mbedtls/error.c
+        websocket/source/mbedtls/gcm.c
+        websocket/source/mbedtls/hkdf.c
+        websocket/source/mbedtls/hmac_drbg.c
+        websocket/source/mbedtls/md.c
+        websocket/source/mbedtls/md5.c
+        websocket/source/mbedtls/memory_buffer_alloc.c
+        websocket/source/mbedtls/mps_reader.c
+        websocket/source/mbedtls/mps_trace.c
+        websocket/source/mbedtls/net_sockets.c
+        websocket/source/mbedtls/nist_kw.c
+        websocket/source/mbedtls/oid.c
+        websocket/source/mbedtls/padlock.c
+        websocket/source/mbedtls/pem.c
+        websocket/source/mbedtls/pk.c
+        websocket/source/mbedtls/pkcs12.c
+        websocket/source/mbedtls/pkcs5.c
+        websocket/source/mbedtls/pkparse.c
+        websocket/source/mbedtls/pkwrite.c
+        websocket/source/mbedtls/pk_wrap.c
+        websocket/source/mbedtls/platform.c
+        websocket/source/mbedtls/platform_util.c
+        websocket/source/mbedtls/poly1305.c
+        websocket/source/mbedtls/psa_crypto.c
+        websocket/source/mbedtls/psa_crypto_aead.c
+        websocket/source/mbedtls/psa_crypto_cipher.c
+        websocket/source/mbedtls/psa_crypto_client.c
+        websocket/source/mbedtls/psa_crypto_driver_wrappers.c
+        websocket/source/mbedtls/psa_crypto_ecp.c
+        websocket/source/mbedtls/psa_crypto_hash.c
+        websocket/source/mbedtls/psa_crypto_mac.c
+        websocket/source/mbedtls/psa_crypto_rsa.c
+        websocket/source/mbedtls/psa_crypto_se.c
+        websocket/source/mbedtls/psa_crypto_slot_management.c
+        websocket/source/mbedtls/psa_crypto_storage.c
+        websocket/source/mbedtls/psa_its_file.c
+        websocket/source/mbedtls/ripemd160.c
+        websocket/source/mbedtls/rsa.c
+        websocket/source/mbedtls/rsa_alt_helpers.c
+        websocket/source/mbedtls/sha1.c
+        websocket/source/mbedtls/sha256.c
+        websocket/source/mbedtls/sha512.c
+        websocket/source/mbedtls/ssl_cache.c
+        websocket/source/mbedtls/ssl_ciphersuites.c
+        websocket/source/mbedtls/ssl_cli.c
+        websocket/source/mbedtls/ssl_cookie.c
+        websocket/source/mbedtls/ssl_debug_helpers_generated.c
+        websocket/source/mbedtls/ssl_msg.c
+        websocket/source/mbedtls/ssl_srv.c
+        websocket/source/mbedtls/ssl_ticket.c
+        websocket/source/mbedtls/ssl_tls.c
+        websocket/source/mbedtls/ssl_tls13_client.c
+        websocket/source/mbedtls/ssl_tls13_generic.c
+        websocket/source/mbedtls/ssl_tls13_keys.c
+        websocket/source/mbedtls/ssl_tls13_server.c
+        websocket/source/mbedtls/threading.c
+        websocket/source/mbedtls/timing.c
+        websocket/source/mbedtls/version.c
+        websocket/source/mbedtls/version_features.c
+        websocket/source/mbedtls/x509.c
+        websocket/source/mbedtls/x509write_crt.c
+        websocket/source/mbedtls/x509write_csr.c
+        websocket/source/mbedtls/x509_create.c
+        websocket/source/mbedtls/x509_crl.c
+        websocket/source/mbedtls/x509_crt.c
+        websocket/source/mbedtls/x509_csr.c
 )
 
 set(API
-	websocket/library/websocket/websocket_c_api.cpp
+        websocket/source/websocket/websocket_c_api.cpp
 )
 
 set(ZLIB
-	websocket/library/websocket/gzclose.c
-	websocket/library/websocket/gzlib.c
-	websocket/library/websocket/gzread.c
-	websocket/library/websocket/gzwrite.c
-	websocket/library/websocket/adler32.c
-	websocket/library/websocket/crc32.c
-	websocket/library/websocket/trees.c
-	websocket/library/websocket/inftrees.c
-	websocket/library/websocket/inffast.c
-	websocket/library/websocket/zutil.c
-	websocket/library/websocket/deflate.c
-	websocket/library/websocket/inflate.c
+        websocket/source/websocket/gzclose.c
+        websocket/source/websocket/gzlib.c
+        websocket/source/websocket/gzread.c
+        websocket/source/websocket/gzwrite.c
+        websocket/source/websocket/adler32.c
+        websocket/source/websocket/crc32.c
+        websocket/source/websocket/trees.c
+        websocket/source/websocket/inftrees.c
+        websocket/source/websocket/inffast.c
+        websocket/source/websocket/zutil.c
+        websocket/source/websocket/deflate.c
+        websocket/source/websocket/inflate.c
 )
 
 set(CORE
-    websocket/library/websocket/flate.cpp
-    websocket/library/websocket/byte_stream.cpp
-	websocket/library/websocket/endian.cpp
-	websocket/library/websocket/http.cpp
-	websocket/library/websocket/handshake.cpp
-    websocket/library/websocket/frame.cpp
-	websocket/library/websocket/websocket.cpp
+        websocket/source/websocket/flate.cpp
+        websocket/source/websocket/byte_stream.cpp
+        websocket/source/websocket/endian.cpp
+        websocket/source/websocket/http.cpp
+        websocket/source/websocket/handshake.cpp
+        websocket/source/websocket/frame.cpp
+        websocket/source/websocket/websocket.cpp
 )
 
 set(SOURCES
-    websocket/library/websocket/example.cpp
+        websocket/source/websocket/example.cpp
 )
 
 source_group("mbedtls" FILES ${MBEDTLS})
