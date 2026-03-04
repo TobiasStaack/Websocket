@@ -24,8 +24,6 @@ SOFTWARE.
 
 #pragma once
 
-#include <cstddef>
-
 #include <websocket/core/byte_stream.h>
 
 /**
@@ -44,7 +42,7 @@ public:
      */
     enum class e_status : unsigned char
     {
-        status_ok = 0x0, /**< Operation completed successfully. */
+        status_ok = 0x0,   /**< Operation completed successfully. */
         status_error = 0x1 /**< An error occurred during the operation. */
     };
 
@@ -55,12 +53,12 @@ public:
      *
      * @param input Pointer to the input byte stream to be compressed.
      * @param output Pointer to the output byte stream where compressed data will be stored.
-     * @param window_size Size of the sliding window to use for compression.
+     * @param window_bits Size of the sliding window to use for compression.
      *
      * @return e_status The status of the compression operation.
      */
     static e_status
-    deflate( const c_byte_stream *input, const c_byte_stream *output, size_t window_size );
+    deflate( const c_byte_stream* input, const c_byte_stream* output, unsigned char window_bits );
 
     /**
      * @brief Decompresses the input byte stream using the DEFLATE algorithm.
@@ -69,10 +67,10 @@ public:
      *
      * @param input Pointer to the input byte stream to be decompressed.
      * @param output Pointer to the output byte stream where decompressed data will be stored.
-     * @param window_size Size of the sliding window to use for decompression.
+     * @param window_bits Size of the sliding window to use for decompression.
      *
      * @return e_status The status of the decompression operation.
      */
     static e_status
-    inflate( const c_byte_stream *input, const c_byte_stream *output, size_t window_size );
+    inflate( const c_byte_stream* input, const c_byte_stream* output, unsigned char window_bits );
 };

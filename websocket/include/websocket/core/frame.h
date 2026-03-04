@@ -97,7 +97,7 @@ public:
     mask( unsigned int key ) const;
 
     void
-    deflate( size_t window_size ) const;
+    deflate( unsigned char window_bits ) const;
 
     /**
      * @brief Appends data to the WebSocket frame payload.

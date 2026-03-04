@@ -26,88 +26,175 @@ SOFTWARE.
 
 #include <websocket/core/deflate.h>
 
-#include <websocket/core/inftrees.h>
-
-#include <websocket/core/inflate.h>
-
 c_flate::e_status
-c_flate::deflate( const c_byte_stream *input, const c_byte_stream *output, const size_t window_size )
+c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    z_stream strm = {};
+    if ( input == nullptr || output == nullptr )
+    {
+        return e_status::status_error;
+    }
 
-    int ret = deflateInit2( &strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -1 * window_size, 8, Z_DEFAULT_STRATEGY );
+    if ( input->size() == 0 )
+    {
+        return e_status::status_ok;
+    }
+
+    z_stream strm = {};
+    int ret = deflateInit2( &strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -static_cast< int >( window_bits ), 8, Z_DEFAULT_STRATEGY );
     if ( ret != Z_OK )
     {
         return e_status::status_error;
     }
 
-    strm.avail_in = input->size();
-    strm.next_in = input->pointer();
+    const unsigned char* in_ptr = input->pointer();
+    size_t in_left = input->size();
 
     std::vector< unsigned char > buffer( 32768 );
 
-    do
-    {
-        strm.avail_out = buffer.size();
-        strm.next_out = buffer.data();
+    ret = Z_OK;
 
-        ret = ::deflate( &strm, Z_FINISH );
-        if ( ret == Z_STREAM_ERROR )
+    for ( ;; )
+    {
+        if ( strm.avail_in == 0 && in_left > 0 )
+        {
+            size_t chunk = in_left;
+            if ( chunk > static_cast< size_t >( std::numeric_limits< uInt >::max() ) )
+            {
+                chunk = static_cast< size_t >( std::numeric_limits< uInt >::max() );
+            }
+
+            strm.next_in = const_cast< Bytef* >( in_ptr );
+            strm.avail_in = static_cast< uInt >( chunk );
+
+            in_ptr += chunk;
+            in_left -= chunk;
+        }
+
+        strm.next_out = buffer.data();
+        strm.avail_out = static_cast< uInt >( buffer.size() );
+
+        const int flush_mode = ( in_left == 0 && strm.avail_in == 0 ) ? Z_FINISH : Z_NO_FLUSH;
+
+        ret = ::deflate( &strm, flush_mode );
+
+        if ( ret != Z_OK && ret != Z_STREAM_END )
         {
             deflateEnd( &strm );
             return e_status::status_error;
         }
 
-        if ( output->push_back( buffer.data(), buffer.size() - strm.avail_out ) != c_byte_stream::e_status::ok )
+        const size_t produced = buffer.size() - static_cast< size_t >( strm.avail_out );
+        if ( produced > 0 )
+        {
+            if ( output->push_back( buffer.data(), produced ) != c_byte_stream::e_status::ok )
+            {
+                deflateEnd( &strm );
+                return e_status::status_error;
+            }
+        }
+
+        if ( ret == Z_STREAM_END )
+        {
+            break;
+        }
+
+        if ( flush_mode == Z_FINISH && produced == 0 )
         {
             deflateEnd( &strm );
             return e_status::status_error;
         }
     }
-    while ( strm.avail_out == 0 );
 
     deflateEnd( &strm );
-
-    return ( ret == Z_STREAM_END ) ? e_status::status_ok : e_status::status_error;
+    return e_status::status_ok;
 }
 
 c_flate::e_status
-c_flate::inflate( const c_byte_stream *input, const c_byte_stream *output, const size_t window_size )
+c_flate::inflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    z_stream strm = {};
+    if ( input == nullptr || output == nullptr )
+    {
+        return e_status::status_error;
+    }
 
-    int ret = inflateInit2( &strm, -1 * window_size );
+    if ( input->size() == 0 )
+    {
+        return e_status::status_ok;
+    }
+
+    z_stream strm = {};
+    int ret = inflateInit2( &strm, -static_cast< int >( window_bits ) );
     if ( ret != Z_OK )
     {
         return e_status::status_error;
     }
 
-    strm.avail_in = input->size();
-    strm.next_in = input->pointer();
+    const unsigned char* in_ptr = input->pointer();
+    size_t in_left = input->size();
 
     std::vector< unsigned char > buffer( 32768 );
 
-    do
-    {
-        strm.avail_out = buffer.size();
-        strm.next_out = buffer.data();
+    ret = Z_OK;
 
-        ret = ::inflate( &strm, Z_SYNC_FLUSH );
-        if ( ret == Z_STREAM_ERROR || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR )
+    for ( ;; )
+    {
+        if ( strm.avail_in == 0 && in_left > 0 )
+        {
+            size_t chunk = in_left;
+            if ( chunk > static_cast< size_t >( std::numeric_limits< uInt >::max() ) )
+            {
+                chunk = static_cast< size_t >( std::numeric_limits< uInt >::max() );
+            }
+
+            strm.next_in = const_cast< Bytef* >( in_ptr );
+            strm.avail_in = static_cast< uInt >( chunk );
+
+            in_ptr += chunk;
+            in_left -= chunk;
+        }
+
+        strm.next_out = buffer.data();
+        strm.avail_out = static_cast< uInt >( buffer.size() );
+
+        ret = ::inflate( &strm, Z_NO_FLUSH );
+
+        if ( ret == Z_NEED_DICT || ret == Z_DATA_ERROR || ret == Z_MEM_ERROR || ret == Z_STREAM_ERROR )
         {
             inflateEnd( &strm );
             return e_status::status_error;
         }
 
-        if ( output->push_back( buffer.data(), buffer.size() - strm.avail_out ) != c_byte_stream::e_status::ok )
+        const size_t produced = buffer.size() - static_cast< size_t >( strm.avail_out );
+        if ( produced > 0 )
+        {
+            if ( output->push_back( buffer.data(), produced ) != c_byte_stream::e_status::ok )
+            {
+                inflateEnd( &strm );
+                return e_status::status_error;
+            }
+        }
+
+        if ( ret == Z_STREAM_END )
+        {
+            break;
+        }
+
+        if ( ret == Z_BUF_ERROR )
+        {
+            if ( strm.avail_in == 0 && in_left == 0 )
+            {
+                inflateEnd( &strm );
+                return e_status::status_error;
+            }
+        }
+
+        if ( produced == 0 && strm.avail_in == 0 && in_left == 0 )
         {
             inflateEnd( &strm );
             return e_status::status_error;
         }
     }
-    while ( strm.avail_in > 0 );
 
     inflateEnd( &strm );
-
-    return ( ret == Z_OK || ret == Z_STREAM_END ) ? e_status::status_ok : e_status::status_error;
+    return e_status::status_ok;
 }
