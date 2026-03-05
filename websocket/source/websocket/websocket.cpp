@@ -292,7 +292,7 @@ struct c_websocket::impl_t
 c_websocket::impl_t::
     impl_t()
 {
-    instance = nullptr;
+    instance = 0;
 
     mode = mode_unsecured;
 
@@ -427,7 +427,7 @@ addr_t::from_string( const std::string& in_string )
         size_t i = 0;
         while ( std::getline( iss, part, ':' ) && i < len )
         {
-            int byte = std::stoi( part, nullptr, 16 );
+            int byte = std::stoi( part, 0, 16 );
             bytes[ i++ ] = static_cast< unsigned char >( byte );
         }
         if ( i != 16 )
@@ -577,7 +577,7 @@ c_websocket::impl_t::set_last_error( const std::string& message )
 e_ws_status
 c_websocket::impl_t::setup( const ws_settings_t* settings )
 {
-    if ( settings == nullptr )
+    if ( settings == 0 )
     {
         return status_error;
     }
@@ -591,7 +591,7 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
 
     if ( mode == mode_secured )
     {
-        if ( MBEDTLS_STATUS( mbedtls_entropy_add_source( &ssl.entropy, mbedtls_platform_entropy_poll, nullptr, 32, MBEDTLS_ENTROPY_SOURCE_STRONG ) ) != 0 )
+        if ( MBEDTLS_STATUS( mbedtls_entropy_add_source( &ssl.entropy, mbedtls_platform_entropy_poll, 0, 32, MBEDTLS_ENTROPY_SOURCE_STRONG ) ) != 0 )
         {
             return status_error;
         }
@@ -611,7 +611,7 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
             return status_error;
         }
 
-        if ( MBEDTLS_STATUS( mbedtls_pk_parse_key( &ssl.private_key, reinterpret_cast< const unsigned char* >( settings->ssl_private_key ? settings->ssl_private_key : "" ), settings->ssl_private_key ? std::strlen( settings->ssl_private_key ) : 0, nullptr, 0, mbedtls_ctr_drbg_random, &ssl.drbg ) ) != 0 )
+        if ( MBEDTLS_STATUS( mbedtls_pk_parse_key( &ssl.private_key, reinterpret_cast< const unsigned char* >( settings->ssl_private_key ? settings->ssl_private_key : "" ), settings->ssl_private_key ? std::strlen( settings->ssl_private_key ) : 0, 0, 0, mbedtls_ctr_drbg_random, &ssl.drbg ) ) != 0 )
         {
             return status_error;
         }
@@ -621,7 +621,7 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
             return status_error;
         }
 
-        mbedtls_ssl_conf_ca_chain( &ssl.context, &ssl.cert, nullptr );
+        mbedtls_ssl_conf_ca_chain( &ssl.context, &ssl.cert, 0 );
 
         if ( MBEDTLS_STATUS( mbedtls_ssl_conf_own_cert( &ssl.context, ssl.cert.next, &ssl.private_key ) ) != 0 )
         {
@@ -1295,10 +1295,10 @@ c_websocket::on_error( const char* message )
 c_websocket::
     c_websocket()
 {
-    event_open_callback = nullptr;
-    event_close_callback = nullptr;
-    event_frame_callback = nullptr;
-    event_error_callback = nullptr;
+    event_open_callback = 0;
+    event_close_callback = 0;
+    event_frame_callback = 0;
+    event_error_callback = 0;
 
     impl = new impl_t();
     impl->instance = this;
@@ -1324,7 +1324,7 @@ c_websocket::bind( const char* bind_ip, const char* bind_port, int* out_fd ) con
 e_ws_status
 c_websocket::bind( const char* bind_port, int* out_fd ) const
 {
-    return impl->bind( nullptr, bind_port, out_fd );
+    return impl->bind( 0, bind_port, out_fd );
 }
 
 e_ws_status

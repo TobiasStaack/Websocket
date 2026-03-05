@@ -29,7 +29,7 @@ SOFTWARE.
 c_flate::e_status
 c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    if ( input == nullptr || output == nullptr )
+    if ( input == 0 || output == 0 )
     {
         return e_status::status_error;
     }
@@ -97,7 +97,7 @@ c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const
 c_flate::e_status
 c_flate::inflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
-    if ( input == nullptr || output == nullptr )
+    if ( input == 0 || output == 0 )
     {
         return e_status::status_error;
     }

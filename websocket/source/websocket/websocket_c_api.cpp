@@ -34,9 +34,9 @@ void *
 websocket_create()
 {
     void *ptr = std::malloc( sizeof( c_websocket ) );
-    if ( ptr == nullptr )
+    if ( ptr == 0 )
     {
-        return nullptr;
+        return 0;
     }
 
     return new ( ptr ) c_websocket();
@@ -114,9 +114,9 @@ void *
 websocket_frame_create( const e_ws_frame_opcode opcode )
 {
     void *ptr = std::malloc( sizeof( c_ws_frame ) );
-    if ( ptr == nullptr )
+    if ( ptr == 0 )
     {
-        return nullptr;
+        return 0;
     }
 
     return new ( ptr ) c_ws_frame( opcode );

@@ -249,9 +249,9 @@ c_http::parse( const c_byte_stream* input, c_http& http )
         std::string value;
         value.resize( pos - pos_col );
 
-        input->copy( reinterpret_cast< unsigned char* >( &key[ 0 ] ), pos_col - offset, nullptr, offset );
+        input->copy( reinterpret_cast< unsigned char* >( &key[ 0 ] ), pos_col - offset, 0, offset );
 
-        input->copy( reinterpret_cast< unsigned char* >( &value[ 0 ] ), pos - pos_col, nullptr, pos_col + 1 );
+        input->copy( reinterpret_cast< unsigned char* >( &value[ 0 ] ), pos - pos_col, 0, pos_col + 1 );
 
         auto trim = []( const std::string& s ) -> std::string
         {
@@ -274,7 +274,7 @@ c_http::parse( const c_byte_stream* input, c_http& http )
     if ( body_len != 0 )
     {
         body.resize( body_len );
-        input->copy( body.pointer( 0 ), body_len, nullptr, header_len + 4 );
+        input->copy( body.pointer( 0 ), body_len, 0, header_len + 4 );
     }
 
     http.method = method;

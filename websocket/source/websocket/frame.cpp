@@ -110,7 +110,7 @@ c_ws_frame::~c_ws_frame()
     if ( impl )
     {
         delete impl;
-        impl = nullptr;
+        impl = 0;
     }
 }
 
@@ -127,7 +127,7 @@ c_ws_frame::
     c_ws_frame( c_ws_frame&& other ) noexcept
 {
     impl = other.impl;
-    other.impl = nullptr;
+    other.impl = 0;
 }
 
 c_ws_frame&
@@ -154,7 +154,7 @@ c_ws_frame::operator=( c_ws_frame&& other ) noexcept
     }
 
     impl = other.impl;
-    other.impl = nullptr;
+    other.impl = 0;
 
     return *this;
 }
@@ -459,7 +459,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
 
     if ( payload_length == 126 )
     {
-        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 2, nullptr, offset );
+        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 2, 0, offset );
 
         payload_length = static_cast< unsigned long long >( c_endian::network_to_host_16( static_cast< unsigned short >( payload_length ) ) );
 
@@ -467,7 +467,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
     }
     else if ( payload_length == 127 )
     {
-        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 8, nullptr, offset );
+        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 8, 0, offset );
 
         payload_length = c_endian::network_to_host_64( payload_length );
 
@@ -483,7 +483,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
 
     if ( byte2.bits.mask )
     {
-        input->copy( reinterpret_cast< unsigned char* >( &mask_key ), 4, nullptr, offset );
+        input->copy( reinterpret_cast< unsigned char* >( &mask_key ), 4, 0, offset );
 
         offset += 4;
     }

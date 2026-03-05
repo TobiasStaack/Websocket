@@ -197,7 +197,7 @@ c_byte_stream::operator=( const c_byte_stream& other )
 c_byte_stream::c_byte_stream( c_byte_stream&& other ) noexcept
 {
     impl = other.impl;
-    other.impl = nullptr;
+    other.impl = 0;
 }
 
 c_byte_stream&
@@ -211,11 +211,11 @@ c_byte_stream::operator=( c_byte_stream&& other ) noexcept
     if ( impl )
     {
         delete impl;
-        impl = nullptr;
+        impl = 0;
     }
 
     impl = other.impl;
-    other.impl = nullptr;
+    other.impl = 0;
 
     return *this;
 }
@@ -225,7 +225,7 @@ c_byte_stream::~c_byte_stream()
     if ( impl )
     {
         delete impl;
-        impl = nullptr;
+        impl = 0;
     }
 }
 
@@ -351,7 +351,7 @@ c_byte_stream::impl_t::push_back( const unsigned char* source, const size_t size
 void
 c_byte_stream::impl_t::pull( unsigned char* destination, size_t& size, const size_t offset )
 {
-    if ( destination == nullptr )
+    if ( destination == 0 )
     {
         size = 0;
         return;
@@ -379,7 +379,7 @@ c_byte_stream::impl_t::pull( unsigned char* destination, size_t& size, const siz
 void
 c_byte_stream::impl_t::pull_back( unsigned char* destination, size_t& size, const size_t offset )
 {
-    if ( destination == nullptr )
+    if ( destination == 0 )
     {
         size = 0;
         return;
@@ -446,7 +446,7 @@ c_byte_stream::impl_t::copy( unsigned char* destination, size_t size, size_t* av
         *available = 0;
     }
 
-    if ( destination == nullptr )
+    if ( destination == 0 )
     {
         return;
     }
@@ -576,7 +576,7 @@ c_byte_stream::impl_t::index_of( const int val, const size_t offset, const size_
         n
     ) );
 
-    if ( ptr == nullptr )
+    if ( ptr == 0 )
     {
         return npos;
     }
@@ -668,7 +668,7 @@ c_byte_stream::impl_t::pointer( const size_t offset ) const
 {
     if ( container.empty() || offset >= container.size() )
     {
-        return nullptr;
+        return 0;
     }
 
     return const_cast< unsigned char* >( container.data() + offset );

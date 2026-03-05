@@ -94,7 +94,7 @@ c_ws_handshake::random( const size_t count, std::string& output )
     constexpr const char* pers = "097290aafe141434bd15eace820031b16f40a4677979a386919bad2ba57f1547";
 
     unsigned char* block = static_cast< unsigned char* >( malloc( sizeof( unsigned char ) * count ) );
-    if ( block == nullptr )
+    if ( block == 0 )
     {
         return error;
     }
@@ -183,7 +183,7 @@ c_ws_handshake::secret( const std::string& input, std::string& output )
 c_ws_handshake::e_status
 c_ws_handshake::create( const char* host, const char* origin, const char* channel, c_byte_stream* output, std::string& out_accept_key, const ws_extensions_t* extensions )
 {
-    if ( output == nullptr )
+    if ( output == 0 )
     {
         return error;
     }
@@ -248,12 +248,12 @@ c_ws_handshake::create( const char* host, const char* origin, const char* channe
 c_ws_handshake::e_status
 c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_byte_stream* output, ws_extensions_t* extensions )
 {
-    if ( output == nullptr )
+    if ( output == 0 )
     {
         return error;
     }
 
-    if ( input == nullptr )
+    if ( input == 0 )
     {
         c_http::respond( c_http::e_status_code::http_status_code_internal_server_error, output );
         return error;
@@ -399,12 +399,12 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
 c_ws_handshake::e_status
 c_ws_handshake::server( const char* host, const char* origin, const c_byte_stream* input, c_byte_stream* output, const ws_extensions_t* server_extensions, ws_extensions_t* client_extensions )
 {
-    if ( output == nullptr )
+    if ( output == 0 )
     {
         return error;
     }
 
-    if ( input == nullptr )
+    if ( input == 0 )
     {
         c_http::respond( c_http::e_status_code::http_status_code_internal_server_error, output );
         return error;
