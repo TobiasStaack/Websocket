@@ -67,7 +67,7 @@ public:
     operator<<( const char *value );
 
     c_byte_stream &
-    operator<<( unsigned char *value );
+    operator<<( const unsigned char *value );
 
     c_byte_stream &
     operator<<( int value );
@@ -105,14 +105,14 @@ public:
     e_status
     push_back_async( const unsigned char *source, size_t size ) const;
 
-    e_status
-    pull( unsigned char *destination, size_t &size, size_t offset = 0 ) const;
+    void
+    pull( unsigned char* destination, size_t& size, size_t offset = 0 ) const;
 
     e_status
     pull_async( unsigned char *destination, size_t &size, size_t offset = 0 ) const;
 
-    e_status
-    pull_back( unsigned char *destination, size_t &size, size_t offset = 0 ) const;
+    void
+    pull_back( unsigned char* destination, size_t& size, size_t offset = 0 ) const;
 
     e_status
     pull_back_async( unsigned char *destination, size_t &size, size_t offset = 0 ) const;
@@ -123,8 +123,8 @@ public:
     e_status
     move_async( const c_byte_stream *destination, size_t size, size_t offset ) const;
 
-    e_status
-    copy( unsigned char *destination, size_t size, size_t *available = nullptr, size_t offset = 0 ) const;
+    void
+    copy( unsigned char* destination, size_t size, size_t* available = nullptr, size_t offset = 0 ) const;
 
     e_status
     copy_async( unsigned char *destination, size_t size, size_t *available = nullptr, size_t offset = 0 ) const;
@@ -132,19 +132,19 @@ public:
     unsigned char *
     pointer( size_t offset = 0 ) const;
 
-    e_status
+    void
     pop( size_t size ) const;
 
     e_status
     pop_async( size_t size ) const;
 
-    e_status
+    void
     pop_back( size_t size ) const;
 
     e_status
     pop_back_async( size_t size ) const;
 
-    e_status
+    void
     erase( size_t start, size_t size ) const;
 
     e_status

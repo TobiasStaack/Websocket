@@ -103,7 +103,7 @@ c_http::get_method() const
     return method;
 }
 
-const std::string &
+const std::string&
 c_http::get_resource() const
 {
     return resource;
@@ -115,33 +115,32 @@ c_http::get_version() const
     return version;
 }
 
-
 c_http::e_status_code
 c_http::get_status_code() const
 {
     return status_code;
 }
 
-const std::string &
+const std::string&
 c_http::get_reason() const
 {
     return reason;
 }
 
-const std::map< std::string, std::string > &
+const std::map< std::string, std::string >&
 c_http::get_headers() const
 {
     return headers;
 }
 
-const c_byte_stream &
+const c_byte_stream&
 c_http::get_body() const
 {
     return body;
 }
 
 c_http::e_status
-c_http::parse( const c_byte_stream *input, c_http &http )
+c_http::parse( const c_byte_stream* input, c_http& http )
 {
     if ( !input || !input->available() )
     {
@@ -159,21 +158,21 @@ c_http::parse( const c_byte_stream *input, c_http &http )
     c_byte_stream body;
 
     // determinate header length
-    const size_t header_len = input->index_of( reinterpret_cast< const unsigned char * >( "\r\n\r\n" ), 4 );
+    const size_t header_len = input->index_of( reinterpret_cast< const unsigned char* >( "\r\n\r\n" ), 4 );
     if ( header_len == c_byte_stream::npos )
     {
         return e_status::no_http_header;
     }
 
     // meta data
-    if ( ( pos = input->index_of( reinterpret_cast< const unsigned char * >( "\r\n" ), 2, offset, header_len + 2 ) ) != c_byte_stream::npos )
+    if ( ( pos = input->index_of( reinterpret_cast< const unsigned char* >( "\r\n" ), 2, offset, header_len + 2 ) ) != c_byte_stream::npos )
     {
-        const auto begin = reinterpret_cast< const char * >( input->pointer( offset ) );
-        const char *end = begin + pos;
+        const auto begin = reinterpret_cast< const char* >( input->pointer( offset ) );
+        const char* end = begin + pos;
 
         const std::regex rgx( R"(^(?:(GET|POST|PUT|DELETE|HEAD|OPTIONS|PATCH|CONNECT|TRACE)\s+)?(?:([^\s]+)\s+)?HTTP/(\d+\.\d+)(?:\s+(\d{3})\s+([^\r\n]*))?$)" );
 
-        std::match_results< const char * > matches;
+        std::match_results< const char* > matches;
 
         if ( !std::regex_match( begin, end, matches, rgx ) )
         {
@@ -235,7 +234,7 @@ c_http::parse( const c_byte_stream *input, c_http &http )
     }
 
     // header fields
-    while ( ( pos = input->index_of( reinterpret_cast< const unsigned char * >( "\r\n" ), 2, offset, header_len + 2 ) ) != c_byte_stream::npos )
+    while ( ( pos = input->index_of( reinterpret_cast< const unsigned char* >( "\r\n" ), 2, offset, header_len + 2 ) ) != c_byte_stream::npos )
     {
         const size_t pos_col = input->index_of( ':', offset, pos );
 
@@ -250,17 +249,11 @@ c_http::parse( const c_byte_stream *input, c_http &http )
         std::string value;
         value.resize( pos - pos_col );
 
-        if ( input->copy( reinterpret_cast< unsigned char * >( &key[ 0 ] ), pos_col - offset, nullptr, offset ) != c_byte_stream::e_status::ok )
-        {
-            return e_status::error;
-        }
+        input->copy( reinterpret_cast< unsigned char* >( &key[ 0 ] ), pos_col - offset, nullptr, offset );
 
-        if ( input->copy( reinterpret_cast< unsigned char * >( &value[ 0 ] ), pos - pos_col, nullptr, pos_col + 1 ) != c_byte_stream::e_status::ok )
-        {
-            return e_status::error;
-        }
+        input->copy( reinterpret_cast< unsigned char* >( &value[ 0 ] ), pos - pos_col, nullptr, pos_col + 1 );
 
-        auto trim = []( const std::string &s ) -> std::string
+        auto trim = []( const std::string& s ) -> std::string
         {
             const size_t start = s.find_first_not_of( " \t\r\n" );
             const size_t end = s.find_last_not_of( " \t\r\n" );
@@ -281,10 +274,7 @@ c_http::parse( const c_byte_stream *input, c_http &http )
     if ( body_len != 0 )
     {
         body.resize( body_len );
-        if ( input->copy( body.pointer( 0 ), body_len, nullptr, header_len + 4 ) != c_byte_stream::e_status::ok )
-        {
-            return e_status::error;
-        }
+        input->copy( body.pointer( 0 ), body_len, nullptr, header_len + 4 );
     }
 
     http.method = method;
@@ -299,7 +289,7 @@ c_http::parse( const c_byte_stream *input, c_http &http )
 }
 
 void
-c_http::respond( e_status_code status_code, c_byte_stream *output )
+c_http::respond( e_status_code status_code, c_byte_stream* output )
 {
     if ( !output )
     {

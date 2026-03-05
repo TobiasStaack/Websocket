@@ -98,24 +98,24 @@ struct c_byte_stream::impl_t
     push_back( const unsigned char* source, size_t size );
 
     e_status
-    pull( unsigned char* destination, size_t& size, size_t offset );
-
-    e_status
-    pull_back( unsigned char* destination, size_t& size, size_t offset );
-
-    e_status
     move( const c_byte_stream* destination, size_t size, size_t offset );
 
-    e_status
+    void
+    pull( unsigned char* destination, size_t& size, size_t offset );
+
+    void
+    pull_back( unsigned char* destination, size_t& size, size_t offset );
+
+    void
     copy( unsigned char* destination, size_t size, size_t* available, size_t offset ) const;
 
-    e_status
+    void
     pop( size_t size );
 
-    e_status
+    void
     pop_back( size_t size );
 
-    e_status
+    void
     erase( size_t start, size_t size );
 
     void
@@ -249,7 +249,7 @@ c_byte_stream::operator<<( const char* value )
 }
 
 c_byte_stream&
-c_byte_stream::operator<<( unsigned char* value )
+c_byte_stream::operator<<( const unsigned char* value )
 {
     const size_t size = std::strlen( reinterpret_cast< const char* >( value ) );
     push_back( value, size );
@@ -348,48 +348,60 @@ c_byte_stream::impl_t::push_back( const unsigned char* source, const size_t size
     return e_status::ok;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::pull( unsigned char* destination, size_t& size, const size_t offset )
 {
+    if ( destination == nullptr )
+    {
+        size = 0;
+        return;
+    }
+
+    if ( container.empty() == true )
+    {
+        size = 0;
+        return;
+    }
+
     if ( offset >= container.size() )
     {
-        return e_status::out_of_bound;
+        size = 0;
+        return;
     }
 
     size = std::min< size_t >( size, container.size() - offset );
 
-    try
-    {
-        std::memcpy( destination, container.data() + offset, size );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
-    }
+    std::memcpy( destination, container.data() + offset, size );
 
-    return pop( size );
+    pop( size );
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::pull_back( unsigned char* destination, size_t& size, const size_t offset )
 {
+    if ( destination == nullptr )
+    {
+        size = 0;
+        return;
+    }
+
+    if ( container.empty() == true )
+    {
+        size = 0;
+        return;
+    }
+
     if ( offset >= container.size() )
     {
-        return e_status::out_of_bound;
+        size = 0;
+        return;
     }
 
     size = std::min< size_t >( size, container.size() - offset );
 
-    try
-    {
-        std::memcpy( destination, container.data() + offset, size );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
-    }
+    std::memcpy( destination, container.data() + offset, size );
 
-    return pop_back( size );
+    pop_back( size );
 }
 
 c_byte_stream::e_status
@@ -426,12 +438,27 @@ c_byte_stream::impl_t::move( const c_byte_stream* destination, const size_t size
     return e_status::ok;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::copy( unsigned char* destination, size_t size, size_t* available, const size_t offset ) const
 {
+    if ( available )
+    {
+        *available = 0;
+    }
+
+    if ( destination == nullptr )
+    {
+        return;
+    }
+
+    if ( container.empty() == true )
+    {
+        return;
+    }
+
     if ( offset >= container.size() )
     {
-        return e_status::out_of_bound;
+        return;
     }
 
     size = std::min< size_t >( size, container.size() - offset );
@@ -441,76 +468,68 @@ c_byte_stream::impl_t::copy( unsigned char* destination, size_t size, size_t* av
         *available = size;
     }
 
-    try
-    {
-        std::memcpy( destination, container.data() + offset, size );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
-    }
-
-    return e_status::ok;
+    std::memcpy( destination, container.data() + offset, size );
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::pop( const size_t size )
 {
+    if ( size == 0 )
+    {
+        return;
+    }
+
     if ( size > container.size() )
     {
-        return e_status::out_of_bound;
+        return;
     }
 
-    try
-    {
-        container.erase( container.begin(), container.begin() + static_cast< ptrdiff_t >( size ) );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
-    }
-
-    return e_status::ok;
+    container.erase( container.begin(), container.begin() + static_cast< ptrdiff_t >( size ) );
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::pop_back( const size_t size )
 {
+    if ( size == 0 )
+    {
+        return;
+    }
+
     if ( size > container.size() )
     {
-        return e_status::out_of_bound;
+        return;
     }
 
-    try
-    {
-        container.erase( container.end() - static_cast< ptrdiff_t >( size ), container.end() );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
-    }
-
-    return e_status::ok;
+    container.erase( container.end() - static_cast< ptrdiff_t >( size ), container.end() );
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::impl_t::erase( const size_t start, const size_t size )
 {
-    if ( start >= container.size() || start + size > container.size() )
+    if ( size == 0 )
     {
-        return e_status::out_of_bound;
+        return;
     }
 
-    try
+    if ( container.empty() == true )
     {
-        container.erase( container.begin() + static_cast< ptrdiff_t >( start ), container.begin() + static_cast< ptrdiff_t >( start ) + static_cast< ptrdiff_t >( size ) );
-    }
-    catch ( ... )
-    {
-        return e_status::error;
+        return;
     }
 
-    return e_status::ok;
+    if ( start >= container.size() )
+    {
+        return;
+    }
+
+    if ( start + size > container.size() )
+    {
+        return;
+    }
+
+    container.erase(
+        container.begin() + static_cast< ptrdiff_t >( start ),
+        container.begin() + static_cast< ptrdiff_t >( start ) + static_cast< ptrdiff_t >( size )
+    );
 }
 
 void
@@ -1254,16 +1273,14 @@ c_byte_stream::push_back_async( const unsigned char* source, const size_t size )
     return status;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::pull( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->pull( destination, size, offset );
+    impl->pull( destination, size, offset );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1274,23 +1291,21 @@ c_byte_stream::pull_async( unsigned char* destination, size_t& size, const size_
         return e_status::busy;
     }
 
-    const e_status status = impl->pull( destination, size, offset );
+    impl->pull( destination, size, offset );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::pull_back( unsigned char* destination, size_t& size, const size_t offset ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->pull_back( destination, size, offset );
+    impl->pull_back( destination, size, offset );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1301,11 +1316,11 @@ c_byte_stream::pull_back_async( unsigned char* destination, size_t& size, const 
         return e_status::busy;
     }
 
-    const e_status status = impl->pull_back( destination, size, offset );
+    impl->pull_back( destination, size, offset );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
 c_byte_stream::e_status
@@ -1335,16 +1350,14 @@ c_byte_stream::move_async( const c_byte_stream* destination, const size_t size, 
     return status;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::copy( unsigned char* destination, const size_t size, size_t* available, const size_t offset ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->copy( destination, size, available, offset );
+    impl->copy( destination, size, available, offset );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1355,11 +1368,11 @@ c_byte_stream::copy_async( unsigned char* destination, const size_t size, size_t
         return e_status::busy;
     }
 
-    const e_status status = impl->copy( destination, size, available, offset );
+    impl->copy( destination, size, available, offset );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
 unsigned char*
@@ -1368,16 +1381,14 @@ c_byte_stream::pointer( const size_t offset ) const
     return impl->pointer( offset );
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::pop( const size_t size ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->pop( size );
+    impl->pop( size );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1388,23 +1399,21 @@ c_byte_stream::pop_async( const size_t size ) const
         return e_status::busy;
     }
 
-    const e_status status = impl->pop( size );
+    impl->pop( size );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::pop_back( const size_t size ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->pop_back( size );
+    impl->pop_back( size );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1415,23 +1424,21 @@ c_byte_stream::pop_back_async( const size_t size ) const
         return e_status::busy;
     }
 
-    const e_status status = impl->pop_back( size );
+    impl->pop_back( size );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
-c_byte_stream::e_status
+void
 c_byte_stream::erase( const size_t start, const size_t size ) const
 {
     impl->wait_lock();
 
-    const e_status status = impl->erase( start, size );
+    impl->erase( start, size );
 
     impl->unlock();
-
-    return status;
 }
 
 c_byte_stream::e_status
@@ -1442,11 +1449,11 @@ c_byte_stream::erase_async( const size_t start, const size_t size ) const
         return e_status::busy;
     }
 
-    const e_status status = impl->erase( start, size );
+    impl->erase( start, size );
 
     impl->unlock();
 
-    return status;
+    return e_status::ok;
 }
 
 void

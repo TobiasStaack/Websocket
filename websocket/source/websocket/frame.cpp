@@ -459,10 +459,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
 
     if ( payload_length == 126 )
     {
-        if ( input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 2, nullptr, offset ) != c_byte_stream::e_status::ok )
-        {
-            return e_ws_frame_status::status_error;
-        }
+        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 2, nullptr, offset );
 
         payload_length = static_cast< unsigned long long >( c_endian::network_to_host_16( static_cast< unsigned short >( payload_length ) ) );
 
@@ -470,10 +467,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
     }
     else if ( payload_length == 127 )
     {
-        if ( input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 8, nullptr, offset ) != c_byte_stream::e_status::ok )
-        {
-            return e_ws_frame_status::status_error;
-        }
+        input->copy( reinterpret_cast< unsigned char* >( &payload_length ), 8, nullptr, offset );
 
         payload_length = c_endian::network_to_host_64( payload_length );
 
@@ -539,10 +533,7 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
         }
     }
 
-    if ( input->pop( offset ) != c_byte_stream::e_status::ok )
-    {
-        return e_ws_frame_status::status_error;
-    }
+    input->pop( offset );
 
     const e_ws_frame_status status = byte1.bits.fin ? e_ws_frame_status::status_final : e_ws_frame_status::status_fragment;
 

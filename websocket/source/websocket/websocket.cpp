@@ -1033,10 +1033,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                 if ( status > 0 )
                 {
-                    if ( ctx->stream.output.pop( status ) != c_byte_stream::e_status::ok )
-                    {
-                        ctx->stream.output.flush();
-                    }
+                    ctx->stream.output.pop( status );
                 }
                 else
                 {
