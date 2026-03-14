@@ -348,11 +348,11 @@ local void tr_static_init(void) {
 
     /* Construct the codes of the static literal tree */
     for (bits = 0; bits <= MAX_BITS; bits++) bl_count[bits] = 0;
-    n = 0;
-    while (n <= 143) static_ltree[n++].Len = 8, bl_count[8]++;
-    while (n <= 255) static_ltree[n++].Len = 9, bl_count[9]++;
-    while (n <= 279) static_ltree[n++].Len = 7, bl_count[7]++;
-    while (n <= 287) static_ltree[n++].Len = 8, bl_count[8]++;
+
+    static const int ranges[][3] = {{0,143,8}, {144,255,9}, {256,279,7}, {280,287,8}}; // {start, end, length}
+    for (int i = 0; i < 4; i++)
+        for (n = ranges[i][0]; n <= ranges[i][1]; n++)
+            static_ltree[n].Len = ranges[i][2], bl_count[ranges[i][2]]++;
     /* Codes 286 and 287 do not exist, but we must include them in the
      * tree construction to get a canonical Huffman tree (longest code
      * all ones)
