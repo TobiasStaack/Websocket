@@ -51,7 +51,7 @@ __to_chars_len( unsigned int __value, const int __base = 10 ) noexcept
 }
 
 static void
-__to_chars_10_impl( char* __first, unsigned __len, unsigned int __val ) noexcept
+__to_chars_10_impl( char* __first, const unsigned __len, unsigned int __val ) noexcept
 {
     constexpr char __digits[ 201 ] = "0001020304050607080910111213141516171819"
                                      "2021222324252627282930313233343536373839"
@@ -61,7 +61,7 @@ __to_chars_10_impl( char* __first, unsigned __len, unsigned int __val ) noexcept
     unsigned __pos = __len - 1;
     while ( __val >= 100 )
     {
-        auto const __num = ( __val % 100 ) * 2;
+        auto const __num = __val % 100 * 2;
         __val /= 100;
         __first[ __pos ] = __digits[ __num + 1 ];
         __first[ __pos - 1 ] = __digits[ __num ];
@@ -687,7 +687,7 @@ c_byte_stream::impl_t::is_utf8() const
 
     while ( i < len )
     {
-        unsigned char b0 = container[ i ];
+        const unsigned char b0 = container[ i ];
 
         if ( b0 <= 0x7fu )
         {
@@ -707,7 +707,7 @@ c_byte_stream::impl_t::is_utf8() const
                 return false;
             }
 
-            unsigned char b1 = container[ i + 1 ];
+            const unsigned char b1 = container[ i + 1 ];
             if ( ( b1 & 0xc0u ) != 0x80u )
             {
                 return false;
@@ -724,8 +724,8 @@ c_byte_stream::impl_t::is_utf8() const
                 return false;
             }
 
-            unsigned char b1 = container[ i + 1 ];
-            unsigned char b2 = container[ i + 2 ];
+            const unsigned char b1 = container[ i + 1 ];
+            const unsigned char b2 = container[ i + 2 ];
 
             if ( ( b1 & 0xc0u ) != 0x80u )
             {
@@ -762,9 +762,9 @@ c_byte_stream::impl_t::is_utf8() const
                 return false;
             }
 
-            unsigned char b1 = container[ i + 1 ];
-            unsigned char b2 = container[ i + 2 ];
-            unsigned char b3 = container[ i + 3 ];
+            const unsigned char b1 = container[ i + 1 ];
+            const unsigned char b2 = container[ i + 2 ];
+            const unsigned char b3 = container[ i + 3 ];
 
             if ( ( b1 & 0xc0u ) != 0x80u )
             {
@@ -832,7 +832,7 @@ c_byte_stream::impl_t::to_utf8()
         }
 
         static void
-        append_cp( std::vector< unsigned char >& out, unsigned int cp )
+        append_cp( std::vector< unsigned char >& out, const unsigned int cp )
         {
             if ( cp <= 0x7fu )
             {
@@ -842,25 +842,25 @@ c_byte_stream::impl_t::to_utf8()
 
             if ( cp <= 0x7ffu )
             {
-                out.push_back( static_cast< unsigned char >( 0xc0u | ( cp >> 6 ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0xc0u | cp >> 6 ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp & 0x3fu ) );
                 return;
             }
 
             if ( cp <= 0xffffu )
             {
-                out.push_back( static_cast< unsigned char >( 0xe0u | ( cp >> 12 ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 6 ) & 0x3fu ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0xe0u | cp >> 12 ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp >> 6 & 0x3fu ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp & 0x3fu ) );
                 return;
             }
 
             if ( cp <= 0x10ffffu )
             {
-                out.push_back( static_cast< unsigned char >( 0xf0u | ( cp >> 18 ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 12 ) & 0x3fu ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( ( cp >> 6 ) & 0x3fu ) ) );
-                out.push_back( static_cast< unsigned char >( 0x80u | ( cp & 0x3fu ) ) );
+                out.push_back( static_cast< unsigned char >( 0xf0u | cp >> 18 ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp >> 12 & 0x3fu ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp >> 6 & 0x3fu ) );
+                out.push_back( static_cast< unsigned char >( 0x80u | cp & 0x3fu ) );
                 return;
             }
 
@@ -871,17 +871,17 @@ c_byte_stream::impl_t::to_utf8()
     struct u16
     {
         static unsigned int
-        read( const unsigned char* p, bool little_endian )
+        read( const unsigned char* p, const bool little_endian )
         {
             if ( little_endian == true )
             {
-                return static_cast< unsigned int >( p[ 0 ] ) | ( static_cast< unsigned int >( p[ 1 ] ) << 8 );
+                return static_cast< unsigned int >( p[ 0 ] ) | static_cast< unsigned int >( p[ 1 ] ) << 8;
             }
-            return static_cast< unsigned int >( p[ 1 ] ) | ( static_cast< unsigned int >( p[ 0 ] ) << 8 );
+            return static_cast< unsigned int >( p[ 1 ] ) | static_cast< unsigned int >( p[ 0 ] ) << 8;
         }
 
         static bool
-        is_high( unsigned int v )
+        is_high( const unsigned int v )
         {
             if ( v >= 0xd800u && v <= 0xdbffu )
             {
@@ -891,7 +891,7 @@ c_byte_stream::impl_t::to_utf8()
         }
 
         static bool
-        is_low( unsigned int v )
+        is_low( const unsigned int v )
         {
             if ( v >= 0xdc00u && v <= 0xdfffu )
             {
@@ -901,30 +901,30 @@ c_byte_stream::impl_t::to_utf8()
         }
 
         static unsigned int
-        to_cp( unsigned int hi, unsigned int lo )
+        to_cp( const unsigned int hi, const unsigned int lo )
         {
             const unsigned int a = hi - 0xd800u;
             const unsigned int b = lo - 0xdc00u;
-            return 0x10000u + ( ( a << 10 ) | b );
+            return 0x10000u + ( a << 10 | b );
         }
     };
 
     struct u32
     {
         static unsigned int
-        read( const unsigned char* p, bool little_endian )
+        read( const unsigned char* p, const bool little_endian )
         {
             if ( little_endian == true )
             {
                 return static_cast< unsigned int >( p[ 0 ] ) |
-                    ( static_cast< unsigned int >( p[ 1 ] ) << 8 ) |
-                    ( static_cast< unsigned int >( p[ 2 ] ) << 16 ) |
-                    ( static_cast< unsigned int >( p[ 3 ] ) << 24 );
+                    static_cast< unsigned int >( p[ 1 ] ) << 8 |
+                    static_cast< unsigned int >( p[ 2 ] ) << 16 |
+                    static_cast< unsigned int >( p[ 3 ] ) << 24;
             }
             return static_cast< unsigned int >( p[ 3 ] ) |
-                ( static_cast< unsigned int >( p[ 2 ] ) << 8 ) |
-                ( static_cast< unsigned int >( p[ 1 ] ) << 16 ) |
-                ( static_cast< unsigned int >( p[ 0 ] ) << 24 );
+                static_cast< unsigned int >( p[ 2 ] ) << 8 |
+                static_cast< unsigned int >( p[ 1 ] ) << 16 |
+                static_cast< unsigned int >( p[ 0 ] ) << 24;
         }
     };
 
@@ -1007,7 +1007,7 @@ c_byte_stream::impl_t::to_utf8()
     std::vector< unsigned char > out;
     try
     {
-        out.reserve( len + ( len / 2 ) );
+        out.reserve( len + len / 2 );
     }
     catch ( const std::bad_alloc& )
     {
@@ -1020,7 +1020,7 @@ c_byte_stream::impl_t::to_utf8()
 
     if ( has_utf32_bom == true )
     {
-        if ( ( ( len - start ) % 4 ) != 0 )
+        if ( ( len - start ) % 4 != 0 )
         {
             return e_status::error;
         }
@@ -1089,13 +1089,13 @@ c_byte_stream::impl_t::to_utf8()
 
         if ( pairs > 0 )
         {
-            if ( zero_odd > ( pairs / 3 ) )
+            if ( zero_odd > pairs / 3 )
             {
                 utf16_attempt = true;
                 utf16_le = true;
                 utf16_start = 0;
             }
-            else if ( zero_even > ( pairs / 3 ) )
+            else if ( zero_even > pairs / 3 )
             {
                 utf16_attempt = true;
                 utf16_le = false;
@@ -1106,7 +1106,7 @@ c_byte_stream::impl_t::to_utf8()
 
     if ( utf16_attempt == true )
     {
-        if ( ( ( len - utf16_start ) % 2 ) == 0 )
+        if ( ( len - utf16_start ) % 2 == 0 )
         {
             size_t i = utf16_start;
             while ( i + 1 < len )
@@ -1151,7 +1151,7 @@ c_byte_stream::impl_t::to_utf8()
     }
 
     out.clear();
-    out.reserve( len + ( len / 2 ) );
+    out.reserve( len + len / 2 );
 
     size_t i = 0;
     while ( i < len )
