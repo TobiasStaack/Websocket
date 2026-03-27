@@ -82,10 +82,10 @@ public:
     resize( size_t size ) const;
 
     e_status
-    push( const unsigned char value ) const;
+    push( unsigned char value ) const;
 
     e_status
-    push_async( const unsigned char value ) const;
+    push_async( unsigned char value ) const;
 
     e_status
     push( const unsigned char *source, size_t size ) const;
@@ -94,10 +94,10 @@ public:
     push_async( const unsigned char *source, size_t size ) const;
 
     e_status
-    push_back( const unsigned char value ) const;
+    push_back( unsigned char value ) const;
 
     e_status
-    push_back_async( const unsigned char value ) const;
+    push_back_async( unsigned char value ) const;
 
     e_status
     push_back( const unsigned char *source, size_t size ) const;
