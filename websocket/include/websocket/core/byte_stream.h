@@ -24,6 +24,7 @@ SOFTWARE.
 
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 /** \cond */

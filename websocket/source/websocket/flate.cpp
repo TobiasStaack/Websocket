@@ -26,6 +26,8 @@ SOFTWARE.
 
 #include <websocket/core/deflate.h>
 
+#include <limits>
+
 c_flate::e_status
 c_flate::deflate( const c_byte_stream* input, const c_byte_stream* output, const unsigned char window_bits )
 {
