@@ -4,6 +4,7 @@
 extern "C" {
 #endif
 
+#ifdef __cplusplus
 enum class e_ws_frame_status : unsigned char
 {
     status_ok = 0x0, /**< Status indicates all is OK */
@@ -13,8 +14,13 @@ enum class e_ws_frame_status : unsigned char
     status_fragment = 0x4, /**< Status indicates a message fragment was processed */
     status_final = 0x5 /**< Status indicates the message is final */
 };
+#endif
 
+#ifdef __cplusplus
 enum e_ws_frame_opcode : unsigned char
+#else
+typedef enum e_ws_frame_opcode
+#endif
 {
     opcode_continuation = 0x0,
     opcode_text = 0x1,
@@ -32,7 +38,12 @@ enum e_ws_frame_opcode : unsigned char
     opcode_rsv3_further_control = 0xD,
     opcode_rsv4_further_control = 0xE,
     opcode_rsv5_further_control = 0xF
-};
+}
+#ifdef __cplusplus
+;
+#else
+e_ws_frame_opcode;
+#endif
 
 #ifdef __cplusplus
 }

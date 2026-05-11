@@ -75,7 +75,7 @@ WEBSOCKET_API void
 websocket_frame_destroy( void *ctx );
 
 WEBSOCKET_API void
-websocket_close( void *ctx, int fd = -1 );
+websocket_close( void *ctx, int fd );
 
 #ifdef __cplusplus
 }

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #else
 #include <stdlib.h>
+#include <stdbool.h>
 #endif
 
 #define WS_EVENT_OPEN "open"
@@ -22,12 +23,21 @@ extern "C" {
  * This enum represents different status codes that can be returned by
  * WebSocket operations to indicate success, error, or a busy state.
  */
+#ifdef __cplusplus
 enum e_ws_status : unsigned char
+#else
+typedef enum e_ws_status
+#endif
 {
     status_ok = 0x0, /**< @brief Operation was successful. */
     status_error = 0x1, /**< @brief An error occurred during the operation. */
     status_busy = 0x2 /**< @brief The socket is currently busy. */
-};
+}
+#ifdef __cplusplus
+;
+#else
+e_ws_status;
+#endif
 
 /**
  * @enum e_ws_mode
@@ -36,11 +46,20 @@ enum e_ws_status : unsigned char
  * This enum is used to set or indicate whether the WebSocket communication
  * is secured (SSL/TLS) or unsecured.
  */
+#ifdef __cplusplus
 enum e_ws_mode : unsigned char
+#else
+typedef enum e_ws_mode
+#endif
 {
     mode_unsecured = 0x0, /**< @brief Unsecured mode. */
     mode_secured = 0x1 /**< @brief Secured mode (SSL). */
-};
+}
+#ifdef __cplusplus
+;
+#else
+e_ws_mode;
+#endif
 
 /**
  * @enum e_ws_endpoint_type
@@ -49,11 +68,20 @@ enum e_ws_mode : unsigned char
  * This enum is used to specify whether the WebSocket endpoint is acting
  * as a server or a client.
  */
+#ifdef __cplusplus
 enum e_ws_endpoint_type : unsigned char
+#else
+typedef enum e_ws_endpoint_type
+#endif
 {
     endpoint_server = 0x0, /**< @brief The endpoint is a server. */
     endpoint_client = 0x1 /**< @brief The endpoint is a client. */
-};
+}
+#ifdef __cplusplus
+;
+#else
+e_ws_endpoint_type;
+#endif
 
 /**
  * @enum e_ws_closure_status
@@ -61,7 +89,11 @@ enum e_ws_endpoint_type : unsigned char
  *
  * This enum defines status codes as defined in RFC6455 to indicate a reason for closure.
  */
+#ifdef __cplusplus
 enum e_ws_closure_status : int
+#else
+typedef enum e_ws_closure_status
+#endif
 {
     closure_normal = 1000, /**< 1000 indicates a normal closure, meaning that the purpose for which the connection was established has been fulfilled. */
     closure_going_away = 1001, /**< 1001 indicates that an endpoint is "going away", such as a server going down or a browser having navigated away from a page. */
@@ -76,7 +108,12 @@ enum e_ws_closure_status : int
     closure_missing_extension = 1010, /**< 1010 indicates the client terminated the connection due to missing required extensions in the handshake response. */
     closure_internal_error = 1011, /**< 1011 indicates the server terminated the connection due to an unexpected condition preventing fulfillment of the request. */
     closure_tls_handshake_failed = 1015 /**< 1015 is reserved to indicate connection closure due to a failed TLS handshake, such as an unverifiable server certificate. */
-};
+}
+#ifdef __cplusplus
+;
+#else
+e_ws_closure_status;
+#endif
 
 /**
  * @brief WebSocket extensions configuration structure.
@@ -161,11 +198,19 @@ typedef struct
  *
  * @param[in,out] settings Pointer to the WebSocket settings structure to initialize.
  */
-void inline ws_settings_init( ws_settings_t *settings )
+#ifdef __cplusplus
+inline void ws_settings_init( ws_settings_t *settings )
+#else
+static inline void ws_settings_init( ws_settings_t *settings )
+#endif
 {
+#ifdef __cplusplus
     settings->endpoint = e_ws_endpoint_type::endpoint_server;
-
     settings->mode = e_ws_mode::mode_unsecured;
+#else
+    settings->endpoint = endpoint_server;
+    settings->mode = mode_unsecured;
+#endif
 
     settings->read_timeout = 0;
     settings->poll_timeout = 0;
@@ -202,7 +247,11 @@ void inline ws_settings_init( ws_settings_t *settings )
  *
  * @param[in,out] settings Pointer to the WebSocket settings structure to destroy.
  */
-void inline ws_settings_destroy( ws_settings_t *settings )
+#ifdef __cplusplus
+inline void ws_settings_destroy( ws_settings_t *settings )
+#else
+static inline void ws_settings_destroy( ws_settings_t *settings )
+#endif
 {
     if ( settings->ssl_seed )
     {
