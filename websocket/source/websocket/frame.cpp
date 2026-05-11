@@ -280,7 +280,8 @@ c_ws_frame::impl_t::encode( const e_ws_frame_opcode opcode, const bool mask, con
         *const_cast< c_byte_stream* >( input ) = std::move( *const_cast< c_byte_stream* >( &deflated ) );
     }
 
-    size_t offset = 0, size = input->size();
+    size_t size = input->size();
+    bool is_first = true;
 
     do
     {
@@ -292,7 +293,8 @@ c_ws_frame::impl_t::encode( const e_ws_frame_opcode opcode, const bool mask, con
         byte1.bits.rsv1 = window_bits != 0;
         byte1.bits.rsv2 = false;
         byte1.bits.rsv3 = false;
-        byte1.bits.opcode = offset == 0 ? opcode : opcode_continuation;
+        byte1.bits.opcode = is_first ? opcode : opcode_continuation;
+        is_first = false;
 
         if ( fragment.push_back( byte1.value ) != c_byte_stream::e_status::ok )
         {
@@ -351,7 +353,7 @@ c_ws_frame::impl_t::encode( const e_ws_frame_opcode opcode, const bool mask, con
         {
             if ( input->available() )
             {
-                unsigned char* payload = input->pointer( offset );
+                unsigned char* payload = input->pointer( 0 );
                 if ( !payload )
                 {
                     return e_ws_frame_status::status_error;
@@ -371,7 +373,7 @@ c_ws_frame::impl_t::encode( const e_ws_frame_opcode opcode, const bool mask, con
 
         if ( input->available() )
         {
-            if ( input->move( &fragment, payload_length, offset ) != c_byte_stream::e_status::ok )
+            if ( input->move( &fragment, payload_length, 0 ) != c_byte_stream::e_status::ok )
             {
                 return e_ws_frame_status::status_error;
             }
@@ -382,7 +384,6 @@ c_ws_frame::impl_t::encode( const e_ws_frame_opcode opcode, const bool mask, con
             return e_ws_frame_status::status_error;
         }
 
-        offset += payload_length;
         size -= payload_length;
     }
     while ( size > 0 );
@@ -409,10 +410,6 @@ c_ws_frame::impl_t::decode( const c_byte_stream* input, const c_byte_stream* out
     {
         case opcode_continuation:
         {
-            if ( byte1.bits.fin )
-            {
-                return e_ws_frame_status::status_error;
-            }
             break;
         }
 

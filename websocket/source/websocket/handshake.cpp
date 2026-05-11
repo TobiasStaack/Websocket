@@ -271,7 +271,13 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
         return error;
     }
 
-    input->flush();
+    {
+        const size_t header_end = input->index_of( reinterpret_cast< const unsigned char* >( "\r\n\r\n" ), 4 );
+        if ( header_end != c_byte_stream::npos )
+        {
+            input->pop( header_end + 4 );
+        }
+    }
 
     if ( http.get_version() != c_http::e_version::http_version_1_1 )
     {
@@ -422,7 +428,13 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
         return error;
     }
 
-    input->flush();
+    {
+        const size_t header_end = input->index_of( reinterpret_cast< const unsigned char* >( "\r\n\r\n" ), 4 );
+        if ( header_end != c_byte_stream::npos )
+        {
+            input->pop( header_end + 4 );
+        }
+    }
 
     if ( http.get_version() != c_http::e_version::http_version_1_1 )
     {

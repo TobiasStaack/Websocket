@@ -888,6 +888,10 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                 switch ( status_frame )
                                 {
                                     case e_ws_frame_status::status_incomplete:
+                                    {
+                                        return;
+                                    }
+
                                     case e_ws_frame_status::status_fragment:
                                     {
                                         break;
