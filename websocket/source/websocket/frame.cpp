@@ -31,6 +31,7 @@ SOFTWARE.
 
 #include <websocket/core/flate.h>
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
