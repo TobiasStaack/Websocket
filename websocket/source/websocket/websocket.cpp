@@ -71,7 +71,6 @@ gen_rnd_int()
         mbedtls_ctr_drbg_free( &ctr_drbg );
         mbedtls_entropy_free( &entropy );
 
-        // fallback
         std::random_device rd;
         std::mt19937 mt( rd() );
         std::uniform_int_distribution<> dist( std::numeric_limits< int >::min(), std::numeric_limits< int >::max() );
@@ -83,7 +82,6 @@ gen_rnd_int()
         mbedtls_ctr_drbg_free( &ctr_drbg );
         mbedtls_entropy_free( &entropy );
 
-        // fallback
         std::random_device rd;
         std::mt19937 mt( rd() );
         std::uniform_int_distribution<> dist( std::numeric_limits< int >::min(), std::numeric_limits< int >::max() );
@@ -226,7 +224,8 @@ struct c_websocket::impl_t
 
     ssl_t ssl;
 
-    std::map< int, file_descriptor_context > fd_map;
+    typedef std::map< int, file_descriptor_context > fd_map_t;
+    fd_map_t fd_map;
 
     e_ws_endpoint_type endpoint;
 
@@ -402,7 +401,6 @@ addr_t::from_string( const std::string& in_string )
 
     if ( in_string.find( '.' ) != std::string::npos )
     {
-        // IPv4
         len = 4;
         std::istringstream iss( in_string );
         std::string part;
@@ -420,7 +418,6 @@ addr_t::from_string( const std::string& in_string )
     }
     else if ( in_string.find( ':' ) != std::string::npos )
     {
-        // IPv6
         len = 16;
         std::istringstream iss( in_string );
         std::string part;
@@ -560,7 +557,9 @@ c_websocket::impl_t::set_last_status( const int status )
     {
         char buffer[ 512 ];
         mbedtls_strerror( status, buffer, sizeof( buffer ) - 1 );
-        set_last_error( buffer );
+        char error_msg[ 640 ];
+        std::snprintf( error_msg, sizeof( error_msg ), "%s (code=%d)", buffer, status );
+        set_last_error( error_msg );
     }
 
     return status;
@@ -583,6 +582,7 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
     }
 
     endpoint = settings->endpoint;
+    mode = settings->mode;
 
     read_timeout = settings->read_timeout;
     poll_timeout = settings->poll_timeout;
@@ -601,31 +601,48 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
             return status_error;
         }
 
-        if ( MBEDTLS_STATUS( mbedtls_x509_crt_parse( &ssl.cert, reinterpret_cast< const unsigned char* >( settings->ssl_ca_cert ? settings->ssl_ca_cert : "" ), settings->ssl_ca_cert ? std::strlen( settings->ssl_ca_cert ) : 0 ) ) != 0 )
+        if ( settings->ssl_ca_cert )
+        {
+            size_t len = std::strlen( settings->ssl_ca_cert );
+            if ( MBEDTLS_STATUS( mbedtls_x509_crt_parse( &ssl.cert,
+                    reinterpret_cast< const unsigned char* >( settings->ssl_ca_cert ), len + 1 ) ) != 0 )
+            {
+                return status_error;
+            }
+        }
+
+        if ( settings->ssl_own_cert )
+        {
+            size_t len = std::strlen( settings->ssl_own_cert );
+            if ( MBEDTLS_STATUS( mbedtls_x509_crt_parse( &ssl.cert,
+                    reinterpret_cast< const unsigned char* >( settings->ssl_own_cert ), len + 1 ) ) != 0 )
+            {
+                return status_error;
+            }
+        }
+
+        if ( settings->ssl_private_key )
+        {
+            size_t len = std::strlen( settings->ssl_private_key );
+            if ( MBEDTLS_STATUS( mbedtls_pk_parse_key( &ssl.private_key,
+                    reinterpret_cast< const unsigned char* >( settings->ssl_private_key ), len + 1, 0, 0,
+                    mbedtls_ctr_drbg_random, &ssl.drbg ) ) != 0 )
+            {
+                return status_error;
+            }
+        }
+
+        if ( MBEDTLS_STATUS( mbedtls_ssl_config_defaults( &ssl.context, endpoint == endpoint_server ? MBEDTLS_SSL_IS_SERVER : MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT ) ) != 0 )
         {
             return status_error;
         }
 
-        if ( MBEDTLS_STATUS( mbedtls_x509_crt_parse( &ssl.cert, reinterpret_cast< const unsigned char* >( settings->ssl_own_cert ? settings->ssl_own_cert : "" ), settings->ssl_own_cert ? std::strlen( settings->ssl_own_cert ) : 0 ) ) != 0 )
+        if ( settings->ssl_private_key )
         {
-            return status_error;
-        }
-
-        if ( MBEDTLS_STATUS( mbedtls_pk_parse_key( &ssl.private_key, reinterpret_cast< const unsigned char* >( settings->ssl_private_key ? settings->ssl_private_key : "" ), settings->ssl_private_key ? std::strlen( settings->ssl_private_key ) : 0, 0, 0, mbedtls_ctr_drbg_random, &ssl.drbg ) ) != 0 )
-        {
-            return status_error;
-        }
-
-        if ( MBEDTLS_STATUS( mbedtls_ssl_config_defaults( &ssl.context, endpoint, MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT ) ) != 0 )
-        {
-            return status_error;
-        }
-
-        mbedtls_ssl_conf_ca_chain( &ssl.context, &ssl.cert, 0 );
-
-        if ( MBEDTLS_STATUS( mbedtls_ssl_conf_own_cert( &ssl.context, ssl.cert.next, &ssl.private_key ) ) != 0 )
-        {
-            return status_error;
+            if ( MBEDTLS_STATUS( mbedtls_ssl_conf_own_cert( &ssl.context, &ssl.cert, &ssl.private_key ) ) != 0 )
+            {
+                return status_error;
+            }
         }
 
         mbedtls_ssl_conf_rng( &ssl.context, mbedtls_ctr_drbg_random, &ssl.drbg );
@@ -634,7 +651,7 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
         mbedtls_ssl_conf_session_cache( &ssl.context, &ssl.cache, mbedtls_ssl_cache_get, mbedtls_ssl_cache_set );
 #endif
 
-        mbedtls_ssl_conf_authmode( &ssl.context, MBEDTLS_SSL_VERIFY_REQUIRED );
+        mbedtls_ssl_conf_authmode( &ssl.context, MBEDTLS_SSL_VERIFY_NONE );
 
         mbedtls_ssl_conf_read_timeout( &ssl.context, read_timeout );
     }
@@ -708,8 +725,6 @@ c_websocket::impl_t::accept( file_descriptor_context* ctx )
             mbedtls_net_free( &net );
             return;
         }
-
-        mbedtls_ssl_set_bio( &ssl, &net, mbedtls_net_send, mbedtls_net_recv, mbedtls_net_recv_timeout );
     }
 
     file_descriptor_context new_fd;
@@ -719,7 +734,13 @@ c_websocket::impl_t::accept( file_descriptor_context* ctx )
     new_fd.type = e_file_descriptor_type::any;
     new_fd.state = e_file_descriptor_state::handshake;
     new_fd.ws_con_state = e_ws_con_state::opening;
-    fd_map.emplace( net.fd, new_fd );
+    fd_map_t::iterator emplaced = fd_map.emplace( net.fd, new_fd ).first;
+
+    if ( mode == mode_secured )
+    {
+        file_descriptor_context* ctx = &emplaced->second;
+        mbedtls_ssl_set_bio( &ctx->ssl, &ctx->net, mbedtls_net_send, mbedtls_net_recv, mbedtls_net_recv_timeout );
+    }
 }
 
 void
@@ -749,11 +770,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                 return;
             }
 
-            if ( MBEDTLS_STATUS( mbedtls_ssl_get_verify_result( &ctx->ssl ) ) != 0 )
-            {
-                close( ctx, closure_tls_handshake_failed );
-                return;
-            }
+
         }
 
         ctx->state = e_file_descriptor_state::open;
@@ -1009,11 +1026,10 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                         close( ctx, closure_abnormal );
                         break;
 
-                    default:
-                    case MBEDTLS_ERR_SSL_WANT_READ:
-                    case MBEDTLS_ERR_SSL_WANT_WRITE:
-                        // pipe is busy
-                        break;
+                        default:
+                        case MBEDTLS_ERR_SSL_WANT_READ:
+                        case MBEDTLS_ERR_SSL_WANT_WRITE:
+                            break;
                 }
             }
         }
@@ -1052,7 +1068,6 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                         default:
                         case MBEDTLS_ERR_SSL_WANT_READ:
                         case MBEDTLS_ERR_SSL_WANT_WRITE:
-                            // pipe is busy
                             break;
                     }
                 }
@@ -1124,8 +1139,6 @@ c_websocket::impl_t::open( const char* host_name, const char* host_port, int* ou
             mbedtls_net_free( &net );
             return status_error;
         }
-
-        mbedtls_ssl_set_bio( &ssl, &net, mbedtls_net_send, mbedtls_net_recv, mbedtls_net_recv_timeout );
     }
 
     file_descriptor_context new_fd;
@@ -1135,7 +1148,13 @@ c_websocket::impl_t::open( const char* host_name, const char* host_port, int* ou
     new_fd.type = e_file_descriptor_type::any;
     new_fd.state = e_file_descriptor_state::handshake;
     new_fd.ws_con_state = e_ws_con_state::opening;
-    fd_map.emplace( net.fd, new_fd );
+    fd_map_t::iterator emplaced = fd_map.emplace( net.fd, new_fd ).first;
+
+    if ( mode == mode_secured )
+    {
+        file_descriptor_context* ctx = &emplaced->second;
+        mbedtls_ssl_set_bio( &ctx->ssl, &ctx->net, mbedtls_net_send, mbedtls_net_recv, mbedtls_net_recv_timeout );
+    }
 
     if ( out_fd )
     {
@@ -1218,7 +1237,6 @@ c_websocket::impl_t::operate()
         {
             case e_file_descriptor_type::bind:
             {
-                // do not accept further file descriptors, if limit is exceeded.
                 if ( fd_limit != 0 )
                 {
                     if ( fd_count == fd_limit )
