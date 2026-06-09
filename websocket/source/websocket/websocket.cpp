@@ -1454,9 +1454,12 @@ c_websocket::emit( const int fd, const c_ws_frame* frame ) const
         return status_error;
     }
 
+    impl->wait_lock();
+
     const auto it = impl->fd_map.find( fd );
     if ( it == impl->fd_map.end() )
     {
+        impl->unlock();
         return status_error;
     }
 
@@ -1464,11 +1467,13 @@ c_websocket::emit( const int fd, const c_ws_frame* frame ) const
 
     if ( ctx->state != e_file_descriptor_state::open )
     {
+        impl->unlock();
         return status_error;
     }
 
     if ( ctx->ws_con_state == e_ws_con_state::opening || ctx->ws_con_state == e_ws_con_state::closed )
     {
+        impl->unlock();
         return status_error;
     }
 
@@ -1484,8 +1489,11 @@ c_websocket::emit( const int fd, const c_ws_frame* frame ) const
 
     if ( frame->write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
     {
+        impl->unlock();
         return status_error;
     }
+
+    impl->unlock();
 
     return status_ok;
 }
