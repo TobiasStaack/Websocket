@@ -18,7 +18,13 @@
 #endif
 
 #include <stdio.h>
-#include <unistd.h>
+#ifdef _WIN32
+#  include <io.h>
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <unistd.h>
+#endif
 #include "zlib.h"
 #ifdef STDC
 #  include <string.h>

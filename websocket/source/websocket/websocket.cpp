@@ -553,7 +553,9 @@ c_websocket::impl_t::set_last_status( const int status )
 {
     last_status = status;
 
-    if ( status < 0 )
+    if ( status < 0
+        && status != MBEDTLS_ERR_SSL_WANT_READ
+        && status != MBEDTLS_ERR_SSL_WANT_WRITE )
     {
         char buffer[ 512 ];
         mbedtls_strerror( status, buffer, sizeof( buffer ) - 1 );
@@ -748,25 +750,34 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 {
     const int state = poll( ctx );
 
+    wait_lock();
+
     if ( ctx->state == e_file_descriptor_state::handshake )
     {
         if ( mode == mode_secured )
         {
             if ( !( state & MBEDTLS_NET_POLL_WRITE ) )
             {
+                unlock();
                 return;
             }
 
+            unlock();
+
             const int status = MBEDTLS_STATUS( mbedtls_ssl_handshake( &ctx->ssl ) );
+
+            wait_lock();
 
             if ( status == MBEDTLS_ERR_SSL_WANT_READ || status == MBEDTLS_ERR_SSL_WANT_WRITE )
             {
+                unlock();
                 return;
             }
 
             if ( status != 0 )
             {
                 close( ctx, closure_tls_handshake_failed );
+                unlock();
                 return;
             }
 
@@ -785,6 +796,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                 if ( c_ws_handshake::create( host.c_str(), allowed_origin.c_str(), "/", &ctx->stream.output, ctx->sec_websocket_accept, &extensions ) != c_ws_handshake::e_status::ok )
                 {
                     close( ctx, closure_protocol_error );
+                    unlock();
                     return;
                 }
 
@@ -800,6 +812,8 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
             if ( mbedtls_timing_get_delay( &ctx->timer_ping_pong_ctx ) == 2 )
             {
                 close( ctx, closure_abnormal );
+                unlock();
+                return;
             }
 
             if ( mbedtls_timing_get_delay( &ctx->timer_ping_ctx ) == 2 )
@@ -817,6 +831,8 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
             int status;
 
+            unlock();
+
             if ( mode == mode_secured )
             {
                 status = MBEDTLS_STATUS( mbedtls_ssl_read( &ctx->ssl, buffer, CHUNK_SIZE ) );
@@ -826,6 +842,8 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                 status = MBEDTLS_STATUS( mbedtls_net_recv_timeout( &ctx->net, buffer, CHUNK_SIZE, read_timeout ) );
             }
 
+            wait_lock();
+
             if ( status > 0 )
             {
                 if ( ctx->stream.input.push_back( buffer, status ) == c_byte_stream::e_status::ok )
@@ -833,6 +851,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                     if ( ctx->stream.input.size() > message_limit )
                     {
                         close( ctx, closure_message_too_big );
+                        unlock();
                         return;
                     }
 
@@ -862,6 +881,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                 {
                                     case status_busy:
                                     {
+                                        unlock();
                                         return;
                                     }
 
@@ -884,12 +904,14 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                     case status_error:
                                     {
                                         close( ctx, closure_protocol_error );
+                                        unlock();
                                         return;
                                     }
 
                                     default:
                                     {
                                         close( ctx, closure_internal_error );
+                                        unlock();
                                         return;
                                     }
                                 }
@@ -906,6 +928,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                 {
                                     case e_ws_frame_status::status_incomplete:
                                     {
+                                        unlock();
                                         return;
                                     }
 
@@ -917,6 +940,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                     case e_ws_frame_status::status_invalid_data:
                                     {
                                         close( ctx, closure_invalid_data );
+                                        unlock();
                                         return;
                                     }
 
@@ -977,12 +1001,14 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                                     close( ctx, closure_normal );
                                                 }
 
+                                                unlock();
                                                 return;
                                             }
 
                                             default:
                                             {
                                                 close( ctx, closure_internal_error );
+                                                unlock();
                                                 return;
                                             }
                                         }
@@ -993,12 +1019,14 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                     case e_ws_frame_status::status_error:
                                     {
                                         close( ctx, closure_protocol_error );
+                                        unlock();
                                         return;
                                     }
 
                                     default:
                                     {
                                         close( ctx, closure_internal_error );
+                                        unlock();
                                         return;
                                     }
                                 }
@@ -1026,17 +1054,20 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                         close( ctx, closure_abnormal );
                         break;
 
-                        default:
-                        case MBEDTLS_ERR_SSL_WANT_READ:
-                        case MBEDTLS_ERR_SSL_WANT_WRITE:
-                            break;
+                    case MBEDTLS_ERR_SSL_WANT_READ:
+                    case MBEDTLS_ERR_SSL_WANT_WRITE:
+                        break;
+
+                    default:
+                        close( ctx, closure_abnormal );
+                        break;
                 }
             }
         }
 
         if ( state & MBEDTLS_NET_POLL_WRITE )
         {
-            if ( ctx->stream.output.available() )
+            while ( ctx->stream.output.available() )
             {
                 const size_t length = ctx->stream.output.size() > CHUNK_SIZE ? CHUNK_SIZE : ctx->stream.output.size();
 
@@ -1065,15 +1096,22 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                             close( ctx, closure_abnormal );
                             break;
 
-                        default:
                         case MBEDTLS_ERR_SSL_WANT_READ:
                         case MBEDTLS_ERR_SSL_WANT_WRITE:
                             break;
+
+                        default:
+                            close( ctx, closure_abnormal );
+                            break;
                     }
+
+                    break;
                 }
             }
         }
     }
+
+    unlock();
 }
 
 e_ws_status
@@ -1196,7 +1234,11 @@ c_websocket::impl_t::operate()
 
         if ( ctx->type != e_file_descriptor_type::bind )
         {
+            unlock();
+
             const int state = poll( ctx );
+
+            wait_lock();
 
             if ( !( state & MBEDTLS_NET_POLL_WRITE ) )
             {
@@ -1206,7 +1248,12 @@ c_websocket::impl_t::operate()
 
             if ( mode == mode_secured )
             {
+                unlock();
+
                 const int status = MBEDTLS_STATUS( mbedtls_ssl_close_notify( &ctx->ssl ) );
+
+                wait_lock();
+
                 if ( status == MBEDTLS_ERR_SSL_WANT_READ || status == MBEDTLS_ERR_SSL_WANT_WRITE )
                 {
                     ++it;
@@ -1251,7 +1298,11 @@ c_websocket::impl_t::operate()
 
             case e_file_descriptor_type::any:
             {
+                unlock();
+
                 communicate( ctx );
+
+                wait_lock();
                 break;
             }
 
@@ -1366,6 +1417,8 @@ c_websocket::close( const int fd )
         {
             close( it.first );
         }
+
+        impl->unlock();
 
         return;
     }
