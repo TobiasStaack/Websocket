@@ -818,7 +818,12 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
             if ( mbedtls_timing_get_delay( &ctx->timer_ping_ctx ) == 2 )
             {
-                if ( c_ws_frame( opcode_ping ).write( &ctx->stream.output ) == e_ws_frame_status::status_ok )
+                c_ws_frame frame( opcode_ping );
+                if ( auto_mask_frame )
+                {
+                    frame.mask( gen_rnd_int() );
+                }
+                if ( frame.write( &ctx->stream.output ) == e_ws_frame_status::status_ok )
                 {
                     ctx->timer_pong( ping_timeout );
                 }
@@ -967,7 +972,12 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                                             case opcode_ping:
                                             {
-                                                if ( c_ws_frame( opcode_pong ).write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
+                                                c_ws_frame frame( opcode_pong );
+                                                if ( auto_mask_frame )
+                                                {
+                                                    frame.mask( gen_rnd_int() );
+                                                }
+                                                if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
                                                 {
                                                     close( ctx, closure_internal_error );
                                                 }
@@ -992,7 +1002,12 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                                 }
                                                 else
                                                 {
-                                                    if ( c_ws_frame( opcode_close ).write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
+                                                    c_ws_frame frame( opcode_close );
+                                                    if ( auto_mask_frame )
+                                                    {
+                                                        frame.mask( gen_rnd_int() );
+                                                    }
+                                                    if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
                                                     {
                                                         close( ctx, closure_internal_error );
                                                     }
@@ -1444,7 +1459,12 @@ c_websocket::close( const int fd )
 
     if ( ctx->ws_con_state == e_ws_con_state::open )
     {
-        if ( c_ws_frame( opcode_close ).write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
+        c_ws_frame frame( opcode_close );
+        if ( impl->auto_mask_frame )
+        {
+            frame.mask( gen_rnd_int() );
+        }
+        if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
         {
             impl_t::close( ctx, closure_internal_error );
         }
