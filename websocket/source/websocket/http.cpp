@@ -23,10 +23,21 @@ SOFTWARE.
 */
 #include <websocket/core/http.h>
 
+#include <algorithm>
+#include <cctype>
 #include <map>
 #include <string>
 
 #include <regex>
+
+bool
+http_field_less::operator()( const std::string& lhs, const std::string& rhs ) const
+{
+    return std::lexicographical_compare( lhs.begin(), lhs.end(), rhs.begin(), rhs.end(), []( const unsigned char a, const unsigned char b )
+    {
+        return std::tolower( a ) < std::tolower( b );
+    } );
+}
 
 static const std::map< std::string, c_http::e_method > methods = {
     { "GET", c_http::e_method::http_method_get },
@@ -127,7 +138,7 @@ c_http::get_reason() const
     return reason;
 }
 
-const std::map< std::string, std::string >&
+const http_headers_t&
 c_http::get_headers() const
 {
     return headers;
@@ -142,7 +153,7 @@ c_http::get_body() const
 c_http::e_status
 c_http::parse( const c_byte_stream* input, c_http& http )
 {
-    if ( !input || !input->available() )
+    if ( input == 0 || input->available() == false )
     {
         return e_status::error;
     }
@@ -154,7 +165,7 @@ c_http::parse( const c_byte_stream* input, c_http& http )
     auto version = e_version::http_version_unknown;
     auto status_code = e_status_code::http_status_code_ok;
     std::string reason;
-    std::map< std::string, std::string > headers;
+    http_headers_t headers;
     c_byte_stream body;
 
     // determinate header length
@@ -174,7 +185,7 @@ c_http::parse( const c_byte_stream* input, c_http& http )
 
         std::match_results< const char* > matches;
 
-        if ( !std::regex_match( begin, end, matches, rgx ) )
+        if ( std::regex_match( begin, end, matches, rgx ) == false )
         {
             return e_status::no_http_format;
         }
@@ -192,7 +203,7 @@ c_http::parse( const c_byte_stream* input, c_http& http )
             resource = matches[ 2 ].str();
         }
 
-        if ( !matches[ 3 ].matched )
+        if ( matches[ 3 ].matched == false )
         {
             return e_status::no_http_version;
         }
@@ -263,7 +274,17 @@ c_http::parse( const c_byte_stream* input, c_http& http )
         key = trim( key );
         value = trim( value );
 
-        headers.emplace( key, value );
+        const http_headers_t::iterator existing = headers.find( key );
+
+        if ( existing == headers.end() )
+        {
+            headers.emplace( key, value );
+        }
+        else if ( value.empty() == false )
+        {
+            // rfc 7230 3.2.2: a repeated field name combines into one comma separated list
+            existing->second += existing->second.empty() ? value : ", " + value;
+        }
 
         offset = pos + 1;
     }
@@ -289,9 +310,9 @@ c_http::parse( const c_byte_stream* input, c_http& http )
 }
 
 void
-c_http::respond( e_status_code status_code, c_byte_stream* output )
+c_http::respond( e_status_code status_code, c_byte_stream* output, const char* extra_field )
 {
-    if ( !output )
+    if ( output == 0 )
     {
         return;
     }
@@ -306,5 +327,11 @@ c_http::respond( e_status_code status_code, c_byte_stream* output )
     *output << "HTTP/1.1 " << static_cast< unsigned int >( status_code ) << " " << reason.c_str() << "\r\n";
     *output << "Content-Length: 0\r\n";
     *output << "Connection: close\r\n";
+
+    if ( extra_field && extra_field[ 0 ] != '\0' )
+    {
+        *output << extra_field << "\r\n";
+    }
+
     *output << "\r\n";
 }

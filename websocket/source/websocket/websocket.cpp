@@ -25,9 +25,14 @@ SOFTWARE.
 #define MBEDTLS_STATUS( x ) \
     set_last_status( x )
 
-#define CHUNK_SIZE 8192
+#define CHUNK_SIZE 65536
+
+#define CLOSE_TIMEOUT 5000
+
+#define READ_BURST 64
 
 #include <websocket/core/byte_stream.h>
+#include <websocket/core/endian.h>
 #include <websocket/core/handshake.h>
 #include <websocket/core/websocket.h>
 
@@ -38,7 +43,6 @@ SOFTWARE.
 #include <random>
 #include <sstream>
 #include <string>
-#include <thread>
 
 #include <mbedtls/build_info.h>
 #include <mbedtls/ctr_drbg.h>
@@ -53,6 +57,13 @@ SOFTWARE.
 #include <mbedtls/ssl_cache.h>
 #endif
 
+/**
+ * @brief Produces a random 32-bit value used as a masking key.
+ *
+ * Falls back to the standard library generator when no entropy source is available.
+ *
+ * @return The generated value.
+ */
 static FORCE_INLINE int
 gen_rnd_int()
 {
@@ -92,6 +103,90 @@ gen_rnd_int()
     mbedtls_entropy_free( &entropy );
 
     return block[ 0 ] << 24 | block[ 1 ] << 16 | block[ 2 ] << 8 | block[ 3 ];
+}
+
+/**
+ * @brief Checks whether a status code may appear in a close frame.
+ *
+ * @param[in] code The status code taken from the close payload.
+ * @return `true` when RFC 6455 section 7.4 allows the code on the wire.
+ */
+static FORCE_INLINE bool
+is_valid_closure_code( const unsigned short code )
+{
+    // rfc 6455 7.4.2: the private range is always acceptable
+    if ( code >= 3000 && code <= 4999 )
+    {
+        return true;
+    }
+
+    switch ( code )
+    {
+        case closure_normal:
+        case closure_going_away:
+        case closure_protocol_error:
+        case closure_unsupported_data:
+        case closure_invalid_data:
+        case closure_policy_violation:
+        case closure_message_too_big:
+        case closure_missing_extension:
+        case closure_internal_error:
+            return true;
+
+        default:
+            return false;
+    }
+}
+
+/**
+ * @brief Reads and validates the payload of a received close frame.
+ *
+ * @param[in] frame The control frame holding the close payload.
+ * @return The status code to report and echo, or a protocol error when the payload is malformed.
+ */
+static e_ws_closure_status
+parse_closure_status( const c_ws_frame* frame )
+{
+    const size_t size = frame->get_payload_size();
+
+    if ( size == 0 )
+    {
+        return closure_no_status_received;
+    }
+
+    // rfc 6455 5.5.1: the payload is either empty or a status code followed by a utf-8 reason
+    if ( size == 1 )
+    {
+        return closure_protocol_error;
+    }
+
+    const unsigned char* payload = frame->get_payload();
+
+    unsigned short code = 0;
+    std::memcpy( &code, payload, sizeof( code ) );
+    code = c_endian::network_to_host_16( code );
+
+    if ( is_valid_closure_code( code ) == false )
+    {
+        return closure_protocol_error;
+    }
+
+    if ( size > 2 )
+    {
+        c_byte_stream reason;
+
+        if ( reason.push_back( payload + 2, size - 2 ) != c_byte_stream::e_status::ok )
+        {
+            return closure_internal_error;
+        }
+
+        if ( reason.is_utf8() == false )
+        {
+            return closure_invalid_data;
+        }
+    }
+
+    return static_cast< e_ws_closure_status >( code );
 }
 
 struct ssl_t
@@ -182,13 +277,16 @@ struct file_descriptor_context
     network_stream_t stream;
 
     std::string sec_websocket_accept;
+    std::string sub_protocol; /**< subprotocol agreed on during the opening handshake. */
 
     c_ws_frame frame;
+    c_ws_frame control; /**< control frames are never assembled into a fragmented message. */
 
     ws_extensions_t extensions{};
 
     mbedtls_timing_delay_context timer_ping_ctx{};
     mbedtls_timing_delay_context timer_ping_pong_ctx{};
+    mbedtls_timing_delay_context timer_close_ctx{};
 
     e_ws_closure_status closure_status; /**< closure reason for file descriptor. */
 
@@ -204,6 +302,9 @@ struct file_descriptor_context
 
     void
     reset_timer_pong();
+
+    void
+    timer_close( unsigned int ms );
 };
 
 struct c_websocket::impl_t
@@ -233,13 +334,14 @@ struct c_websocket::impl_t
 
     std::string host;
     std::string allowed_origin;
+    std::string channel;
+    std::string sub_protocols;
 
     unsigned int ping_interval;
     unsigned int ping_timeout;
 
     size_t message_limit;
 
-    bool auto_mask_frame;
 
     bool
     try_lock() const;
@@ -277,11 +379,20 @@ struct c_websocket::impl_t
     static void
     close( file_descriptor_context* ctx, e_ws_closure_status closure_status );
 
-    int
-    operate();
+    bool
+    should_mask() const;
 
     void
-    async_ws_frame( const int& fd, const c_ws_frame& frame ) const;
+    setup_frame( file_descriptor_context* ctx ) const;
+
+    bool
+    send_frame( file_descriptor_context* ctx, e_ws_frame_opcode opcode, const unsigned char* payload, size_t size ) const;
+
+    void
+    shutdown( file_descriptor_context* ctx, e_ws_closure_status closure_status ) const;
+
+    int
+    operate();
 
     impl_t();
 
@@ -309,16 +420,19 @@ c_websocket::impl_t::
 
     host = "";
     allowed_origin = "";
+    channel = "/";
+    sub_protocols = "";
 
     ping_interval = 60 * 1000;
     ping_timeout = 30 * 1000;
 
     message_limit = 4 * 1024 * 1024; // 4 mb in bytes
 
-    auto_mask_frame = true;
 
     extensions.permessage_deflate.enabled = false;
     extensions.permessage_deflate.window_bits = 15;
+    extensions.permessage_deflate.deflate_window_bits = 15;
+    extensions.permessage_deflate.inflate_window_bits = 15;
 }
 
 c_websocket::impl_t::~impl_t()
@@ -500,11 +614,14 @@ file_descriptor_context::
 
     mbedtls_timing_set_delay( &timer_ping_ctx, 0, 0 );
     mbedtls_timing_set_delay( &timer_ping_pong_ctx, 0, 0 );
+    mbedtls_timing_set_delay( &timer_close_ctx, 0, 0 );
 
     closure_status = closure_no_status_received;
 
     extensions.permessage_deflate.enabled = false;
     extensions.permessage_deflate.window_bits = 15;
+    extensions.permessage_deflate.deflate_window_bits = 15;
+    extensions.permessage_deflate.inflate_window_bits = 15;
 }
 
 file_descriptor_context::~file_descriptor_context()
@@ -528,6 +645,12 @@ void
 file_descriptor_context::reset_timer_pong()
 {
     mbedtls_timing_set_delay( &timer_ping_pong_ctx, 0, 0 );
+}
+
+void
+file_descriptor_context::timer_close( const unsigned int ms )
+{
+    mbedtls_timing_set_delay( &timer_close_ctx, 0, ms );
 }
 
 bool
@@ -660,13 +783,14 @@ c_websocket::impl_t::setup( const ws_settings_t* settings )
 
     host = settings->host ? settings->host : "";
     allowed_origin = settings->allowed_origin ? settings->allowed_origin : "";
+    channel = settings->channel && settings->channel[ 0 ] != '\0' ? settings->channel : "/";
+    sub_protocols = settings->sub_protocols ? settings->sub_protocols : "";
 
     ping_interval = settings->ping_interval;
     ping_timeout = settings->ping_timeout;
 
     message_limit = settings->message_limit;
 
-    auto_mask_frame = settings->auto_mask_frame;
 
     extensions = settings->extensions;
 
@@ -684,7 +808,7 @@ c_websocket::impl_t::accept( file_descriptor_context* ctx )
 {
     const int state = poll( ctx );
 
-    if ( !( state & MBEDTLS_NET_POLL_READ ) )
+    if ( ( state & MBEDTLS_NET_POLL_READ ) == 0 )
     {
         return;
     }
@@ -756,7 +880,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
     {
         if ( mode == mode_secured )
         {
-            if ( !( state & MBEDTLS_NET_POLL_WRITE ) )
+            if ( ( state & MBEDTLS_NET_POLL_WRITE ) == 0 )
             {
                 unlock();
                 return;
@@ -793,7 +917,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
             case endpoint_client:
             {
-                if ( c_ws_handshake::create( host.c_str(), allowed_origin.c_str(), "/", &ctx->stream.output, ctx->sec_websocket_accept, &extensions ) != c_ws_handshake::e_status::ok )
+                if ( c_ws_handshake::create( host.c_str(), allowed_origin.c_str(), channel.c_str(), sub_protocols.c_str(), &ctx->stream.output, ctx->sec_websocket_accept, &extensions ) != c_ws_handshake::e_status::ok )
                 {
                     close( ctx, closure_protocol_error );
                     unlock();
@@ -807,23 +931,18 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
     if ( ctx->state == e_file_descriptor_state::open )
     {
-        if ( ctx->ws_con_state == e_ws_con_state::open )
+        if ( ctx->ws_con_state == e_ws_con_state::open || ctx->ws_con_state == e_ws_con_state::closing )
         {
             if ( mbedtls_timing_get_delay( &ctx->timer_ping_pong_ctx ) == 2 )
             {
-                close( ctx, closure_abnormal );
+                close( ctx, ctx->ws_con_state == e_ws_con_state::closing ? ctx->closure_status : closure_abnormal );
                 unlock();
                 return;
             }
 
-            if ( mbedtls_timing_get_delay( &ctx->timer_ping_ctx ) == 2 )
+            if ( ctx->ws_con_state == e_ws_con_state::open && mbedtls_timing_get_delay( &ctx->timer_ping_ctx ) == 2 )
             {
-                c_ws_frame frame( opcode_ping );
-                if ( auto_mask_frame )
-                {
-                    frame.mask( gen_rnd_int() );
-                }
-                if ( frame.write( &ctx->stream.output ) == e_ws_frame_status::status_ok )
+                if ( send_frame( ctx, opcode_ping, 0, 0 ) )
                 {
                     ctx->timer_pong( ping_timeout );
                 }
@@ -835,27 +954,55 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
             unsigned char buffer[ CHUNK_SIZE ];
 
             int status;
+            size_t received = 0;
 
-            unlock();
-
-            if ( mode == mode_secured )
+            // drain what the socket already holds, a peer sending in small chunks would
+            // otherwise pay the full poll round trip for every single chunk
+            for ( unsigned int reads = 0; reads < READ_BURST; ++reads )
             {
-                status = MBEDTLS_STATUS( mbedtls_ssl_read( &ctx->ssl, buffer, CHUNK_SIZE ) );
-            }
-            else
-            {
-                status = MBEDTLS_STATUS( mbedtls_net_recv_timeout( &ctx->net, buffer, CHUNK_SIZE, read_timeout ) );
+                unlock();
+
+                if ( mode == mode_secured )
+                {
+                    status = MBEDTLS_STATUS( mbedtls_ssl_read( &ctx->ssl, buffer, CHUNK_SIZE ) );
+                }
+                else if ( reads == 0 )
+                {
+                    status = MBEDTLS_STATUS( mbedtls_net_recv_timeout( &ctx->net, buffer, CHUNK_SIZE, read_timeout ) );
+                }
+                else
+                {
+                    // the socket is non blocking, so this returns at once once it runs dry
+                    status = MBEDTLS_STATUS( mbedtls_net_recv( &ctx->net, buffer, CHUNK_SIZE ) );
+                }
+
+                wait_lock();
+
+                if ( status <= 0 )
+                {
+                    break;
+                }
+
+                if ( ctx->stream.input.push_back( buffer, status ) != c_byte_stream::e_status::ok )
+                {
+                    break;
+                }
+
+                received += static_cast< size_t >( status );
             }
 
-            wait_lock();
+            if ( received )
+            {
+                status = 1;
+            }
 
             if ( status > 0 )
             {
-                if ( ctx->stream.input.push_back( buffer, status ) == c_byte_stream::e_status::ok )
                 {
                     if ( ctx->stream.input.size() > message_limit )
                     {
-                        close( ctx, closure_message_too_big );
+                        ctx->stream.input.flush();
+                        shutdown( ctx, closure_message_too_big );
                         unlock();
                         return;
                     }
@@ -871,11 +1018,11 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                 switch ( endpoint )
                                 {
                                     case endpoint_server:
-                                        status_handshake = c_ws_handshake::server( host.c_str(), allowed_origin.c_str(), &ctx->stream.input, &ctx->stream.output, &extensions, &ctx->extensions );
+                                        status_handshake = c_ws_handshake::server( host.c_str(), allowed_origin.c_str(), sub_protocols.c_str(), &ctx->stream.input, &ctx->stream.output, &extensions, &ctx->extensions, ctx->sub_protocol );
                                         break;
 
                                     case endpoint_client:
-                                        status_handshake = c_ws_handshake::client( ctx->sec_websocket_accept.c_str(), &ctx->stream.input, &ctx->stream.output, &ctx->extensions );
+                                        status_handshake = c_ws_handshake::client( ctx->sec_websocket_accept.c_str(), sub_protocols.c_str(), &ctx->stream.input, &ctx->stream.output, &extensions, &ctx->extensions, ctx->sub_protocol );
                                         break;
 
                                     default:
@@ -892,10 +1039,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                                     case status_ok:
                                     {
-                                        if ( ctx->extensions.permessage_deflate.enabled )
-                                        {
-                                            ctx->frame.deflate( ctx->extensions.permessage_deflate.window_bits );
-                                        }
+                                        setup_frame( ctx );
 
                                         ctx->ws_con_state = e_ws_con_state::open;
 
@@ -927,7 +1071,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                             case e_ws_con_state::open:
                             case e_ws_con_state::closing:
                             {
-                                const e_ws_frame_status status_frame = ctx->frame.read( &ctx->stream.input );
+                                const e_ws_frame_status status_frame = ctx->frame.read( &ctx->stream.input, &ctx->control );
 
                                 switch ( status_frame )
                                 {
@@ -944,42 +1088,35 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                                     case e_ws_frame_status::status_invalid_data:
                                     {
-                                        close( ctx, closure_invalid_data );
+                                        ctx->stream.input.flush();
+                                        shutdown( ctx, closure_invalid_data );
                                         unlock();
                                         return;
                                     }
 
-                                    case e_ws_frame_status::status_final:
+                                    case e_ws_frame_status::status_too_big:
                                     {
-                                        const e_ws_frame_opcode opcode = ctx->frame.get_opcode();
+                                        ctx->stream.input.flush();
+                                        shutdown( ctx, closure_message_too_big );
+                                        unlock();
+                                        return;
+                                    }
 
-                                        switch ( opcode )
+                                    case e_ws_frame_status::status_control:
+                                    {
+                                        switch ( ctx->control.get_opcode() )
                                         {
-                                            case opcode_text:
-                                            case opcode_binary:
-                                            {
-                                                std::thread( &impl_t::async_ws_frame, this, ctx->net.fd, std::move( ctx->frame ) ).detach();
-
-                                                ctx->frame = {};
-
-                                                if ( ctx->extensions.permessage_deflate.enabled )
-                                                {
-                                                    ctx->frame.deflate( ctx->extensions.permessage_deflate.window_bits );
-                                                }
-
-                                                break;
-                                            }
-
                                             case opcode_ping:
                                             {
-                                                c_ws_frame frame( opcode_pong );
-                                                if ( auto_mask_frame )
+                                                // rfc 6455 5.5.3: the pong carries the application data of the ping
+                                                if ( ctx->ws_con_state == e_ws_con_state::open )
                                                 {
-                                                    frame.mask( gen_rnd_int() );
-                                                }
-                                                if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
-                                                {
-                                                    close( ctx, closure_internal_error );
+                                                    if ( send_frame( ctx, opcode_pong, ctx->control.get_payload(), ctx->control.get_payload_size() ) == false )
+                                                    {
+                                                        close( ctx, closure_internal_error );
+                                                        unlock();
+                                                        return;
+                                                    }
                                                 }
 
                                                 break;
@@ -995,26 +1132,34 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                                             case opcode_close:
                                             {
-                                                if ( ctx->ws_con_state == e_ws_con_state::closing )
+                                                const e_ws_closure_status closure = parse_closure_status( &ctx->control );
+
+                                                // rfc 6455 5.5.1: answer a close frame unless the closure handshake is already running
+                                                if ( ctx->ws_con_state != e_ws_con_state::closing )
                                                 {
-                                                    ctx->ws_con_state = e_ws_con_state::closed;
-                                                    close( ctx, closure_normal );
-                                                }
-                                                else
-                                                {
-                                                    c_ws_frame frame( opcode_close );
-                                                    if ( auto_mask_frame )
+                                                    if ( closure == closure_no_status_received )
                                                     {
-                                                        frame.mask( gen_rnd_int() );
+                                                        send_frame( ctx, opcode_close, 0, 0 );
                                                     }
-                                                    if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
+                                                    else
                                                     {
-                                                        close( ctx, closure_internal_error );
+                                                        unsigned char payload[ 2 ];
+
+                                                        const unsigned short code = c_endian::host_to_network_16( static_cast< unsigned short >( closure ) );
+                                                        std::memcpy( payload, &code, sizeof( payload ) );
+
+                                                        send_frame( ctx, opcode_close, payload, sizeof( payload ) );
                                                     }
 
-                                                    ctx->ws_con_state = e_ws_con_state::closed;
-                                                    close( ctx, closure_normal );
+                                                    ctx->closure_status = closure;
                                                 }
+
+                                                ctx->control.flush();
+
+                                                ctx->stream.input.flush();
+
+                                                ctx->ws_con_state = e_ws_con_state::closed;
+                                                close( ctx, ctx->closure_status );
 
                                                 unlock();
                                                 return;
@@ -1028,12 +1173,25 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                                             }
                                         }
 
+                                        ctx->control.flush();
+
+                                        break;
+                                    }
+
+                                    case e_ws_frame_status::status_final:
+                                    {
+                                        // rfc 6455 1.5: messages of a connection are delivered in the order they arrive
+                                        instance->on_frame( ctx->net.fd, ctx->frame.get_opcode(), ctx->frame.get_payload(), ctx->frame.get_payload_size() );
+
+                                        ctx->frame.flush();
+
                                         break;
                                     }
 
                                     case e_ws_frame_status::status_error:
                                     {
-                                        close( ctx, closure_protocol_error );
+                                        ctx->stream.input.flush();
+                                        shutdown( ctx, closure_protocol_error );
                                         unlock();
                                         return;
                                     }
@@ -1080,48 +1238,72 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
             }
         }
 
+    }
+
+    // a closing file descriptor keeps draining so its close frame or http response is delivered
+    if ( ctx->state == e_file_descriptor_state::open || ctx->state == e_file_descriptor_state::close )
+    {
         if ( state & MBEDTLS_NET_POLL_WRITE )
         {
-            while ( ctx->stream.output.available() )
+            // the sent bytes are dropped once, popping per chunk would move the whole
+            // remaining buffer on every iteration and turn a large message into O(n^2)
+            const size_t pending = ctx->stream.output.size();
+
+            size_t sent = 0;
+            bool dropped = false;
+
+            while ( sent < pending )
             {
-                const size_t length = ctx->stream.output.size() > CHUNK_SIZE ? CHUNK_SIZE : ctx->stream.output.size();
+                const size_t remaining = pending - sent;
+                const size_t length = remaining > CHUNK_SIZE ? CHUNK_SIZE : remaining;
 
                 int status;
 
                 if ( mode == mode_secured )
                 {
-                    status = MBEDTLS_STATUS( mbedtls_ssl_write( &ctx->ssl, ctx->stream.output.pointer(), length ) );
+                    status = MBEDTLS_STATUS( mbedtls_ssl_write( &ctx->ssl, ctx->stream.output.pointer( sent ), length ) );
                 }
                 else
                 {
-                    status = MBEDTLS_STATUS( mbedtls_net_send( &ctx->net, ctx->stream.output.pointer(), length ) );
+                    status = MBEDTLS_STATUS( mbedtls_net_send( &ctx->net, ctx->stream.output.pointer( sent ), length ) );
                 }
 
                 if ( status > 0 )
                 {
-                    ctx->stream.output.pop( status );
+                    sent += static_cast< size_t >( status );
+
+                    continue;
                 }
-                else
+
+                switch ( status )
                 {
-                    switch ( status )
-                    {
-                        case 0:
-                        case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
-                        case MBEDTLS_ERR_NET_CONN_RESET:
-                            close( ctx, closure_abnormal );
-                            break;
+                    case 0:
+                    case MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY:
+                    case MBEDTLS_ERR_NET_CONN_RESET:
+                        dropped = true;
+                        break;
 
-                        case MBEDTLS_ERR_SSL_WANT_READ:
-                        case MBEDTLS_ERR_SSL_WANT_WRITE:
-                            break;
+                    case MBEDTLS_ERR_SSL_WANT_READ:
+                    case MBEDTLS_ERR_SSL_WANT_WRITE:
+                        break;
 
-                        default:
-                            close( ctx, closure_abnormal );
-                            break;
-                    }
-
-                    break;
+                    default:
+                        dropped = true;
+                        break;
                 }
+
+                break;
+            }
+
+            if ( sent )
+            {
+                ctx->stream.output.pop( sent );
+            }
+
+            if ( dropped )
+            {
+                ctx->stream.output.flush();
+                close( ctx, closure_abnormal );
             }
         }
     }
@@ -1221,9 +1403,89 @@ void
 c_websocket::impl_t::close( file_descriptor_context* ctx, const e_ws_closure_status closure_status )
 {
     ctx->stream.input.flush();
-    ctx->stream.output.flush();
+
+    if ( ctx->state == e_file_descriptor_state::close )
+    {
+        return;
+    }
+
     ctx->closure_status = closure_status;
     ctx->state = e_file_descriptor_state::close;
+
+    // keep the output queued so a pending close frame or http response still reaches the peer
+    ctx->timer_close( CLOSE_TIMEOUT );
+}
+
+bool
+c_websocket::impl_t::should_mask() const
+{
+    // rfc 6455 5.1: a client masks every frame it sends, a server masks none
+    return endpoint == endpoint_client;
+}
+
+void
+c_websocket::impl_t::setup_frame( file_descriptor_context* ctx ) const
+{
+    ctx->frame.expect_mask( should_mask() == false );
+    ctx->frame.limit( message_limit );
+
+    ctx->control.expect_mask( should_mask() == false );
+    ctx->control.limit( message_limit );
+
+    if ( ctx->extensions.permessage_deflate.enabled )
+    {
+        ctx->frame.deflate( ctx->extensions.permessage_deflate.deflate_window_bits );
+        ctx->frame.inflate( ctx->extensions.permessage_deflate.inflate_window_bits );
+    }
+}
+
+bool
+c_websocket::impl_t::send_frame( file_descriptor_context* ctx, const e_ws_frame_opcode opcode, const unsigned char* payload, const size_t size ) const
+{
+    c_ws_frame frame( opcode );
+
+    if ( should_mask() )
+    {
+        frame.mask( gen_rnd_int() );
+    }
+
+    if ( payload && size )
+    {
+        if ( frame.push( payload, size ) == false )
+        {
+            return false;
+        }
+    }
+
+    return frame.write( &ctx->stream.output ) == e_ws_frame_status::status_ok;
+}
+
+void
+c_websocket::impl_t::shutdown( file_descriptor_context* ctx, const e_ws_closure_status closure_status ) const
+{
+    if ( ctx->ws_con_state != e_ws_con_state::open )
+    {
+        close( ctx, closure_status );
+        return;
+    }
+
+    unsigned char payload[ 2 ];
+
+    const unsigned short code = c_endian::host_to_network_16( static_cast< unsigned short >( closure_status ) );
+    std::memcpy( payload, &code, sizeof( payload ) );
+
+    if ( send_frame( ctx, opcode_close, payload, sizeof( payload ) ) == false )
+    {
+        close( ctx, closure_internal_error );
+        return;
+    }
+
+    ctx->ws_con_state = e_ws_con_state::closing;
+    ctx->closure_status = closure_status;
+
+    // rfc 6455 7.1.1: wait for the peer close frame, but never without a bound, a peer that
+    // stays silent must not keep the file descriptor alive forever
+    ctx->timer_pong( ping_timeout != 0 ? ping_timeout : CLOSE_TIMEOUT );
 }
 
 int
@@ -1241,7 +1503,7 @@ c_websocket::impl_t::operate()
             continue;
         }
 
-        if ( ctx->stream.output.available() )
+        if ( ctx->stream.output.available() && mbedtls_timing_get_delay( &ctx->timer_close_ctx ) != 2 )
         {
             ++it;
             continue;
@@ -1255,7 +1517,7 @@ c_websocket::impl_t::operate()
 
             wait_lock();
 
-            if ( !( state & MBEDTLS_NET_POLL_WRITE ) )
+            if ( ( state & MBEDTLS_NET_POLL_WRITE ) == 0 )
             {
                 ++it;
                 continue;
@@ -1332,16 +1594,6 @@ c_websocket::impl_t::operate()
     unlock();
 
     return fd_count != 0;
-}
-
-void
-c_websocket::impl_t::async_ws_frame( const int& fd, const c_ws_frame& frame ) const
-{
-    const e_ws_frame_opcode opcode = frame.get_opcode();
-    unsigned char* payload = frame.get_payload();
-    const size_t payload_size = frame.get_payload_size();
-
-    instance->on_frame( fd, opcode, payload, payload_size );
 }
 
 void
@@ -1459,19 +1711,7 @@ c_websocket::close( const int fd )
 
     if ( ctx->ws_con_state == e_ws_con_state::open )
     {
-        c_ws_frame frame( opcode_close );
-        if ( impl->auto_mask_frame )
-        {
-            frame.mask( gen_rnd_int() );
-        }
-        if ( frame.write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
-        {
-            impl_t::close( ctx, closure_internal_error );
-        }
-        else
-        {
-            ctx->ws_con_state = e_ws_con_state::closing;
-        }
+        impl->shutdown( ctx, closure_normal );
 
         impl->unlock();
 
@@ -1486,25 +1726,25 @@ c_websocket::close( const int fd )
 e_ws_status
 c_websocket::on( const char* event, void* callback )
 {
-    if ( !std::strcmp( event, WS_EVENT_OPEN ) )
+    if ( std::strcmp( event, WS_EVENT_OPEN ) == 0 )
     {
         event_open_callback = reinterpret_cast< t_event_open >( callback );
         return status_ok;
     }
 
-    if ( !std::strcmp( event, WS_EVENT_CLOSE ) )
+    if ( std::strcmp( event, WS_EVENT_CLOSE ) == 0 )
     {
         event_close_callback = reinterpret_cast< t_event_close >( callback );
         return status_ok;
     }
 
-    if ( !std::strcmp( event, WS_EVENT_FRAME ) )
+    if ( std::strcmp( event, WS_EVENT_FRAME ) == 0 )
     {
         event_frame_callback = reinterpret_cast< t_event_frame >( callback );
         return status_ok;
     }
 
-    if ( !std::strcmp( event, WS_EVENT_ERROR ) )
+    if ( std::strcmp( event, WS_EVENT_ERROR ) == 0 )
     {
         event_error_callback = reinterpret_cast< t_event_error >( callback );
         return status_ok;
@@ -1522,7 +1762,7 @@ c_websocket::operate() const
 e_ws_status
 c_websocket::emit( const int fd, const c_ws_frame* frame ) const
 {
-    if ( !frame )
+    if ( frame == 0 )
     {
         return status_error;
     }
@@ -1544,21 +1784,19 @@ c_websocket::emit( const int fd, const c_ws_frame* frame ) const
         return status_error;
     }
 
-    if ( ctx->ws_con_state == e_ws_con_state::opening || ctx->ws_con_state == e_ws_con_state::closed )
+    // rfc 6455 5.5.1: no data frames are sent once the closure handshake has started
+    if ( ctx->ws_con_state != e_ws_con_state::open )
     {
         impl->unlock();
         return status_error;
     }
 
-    if ( impl->auto_mask_frame )
+    if ( impl->should_mask() )
     {
         frame->mask( gen_rnd_int() );
     }
 
-    if ( ctx->extensions.permessage_deflate.enabled )
-    {
-        frame->deflate( ctx->extensions.permessage_deflate.window_bits );
-    }
+    frame->deflate( ctx->extensions.permessage_deflate.enabled ? ctx->extensions.permessage_deflate.deflate_window_bits : 0 );
 
     if ( frame->write( &ctx->stream.output ) != e_ws_frame_status::status_ok )
     {
@@ -1569,4 +1807,23 @@ c_websocket::emit( const int fd, const c_ws_frame* frame ) const
     impl->unlock();
 
     return status_ok;
+}
+
+const char*
+c_websocket::get_sub_protocol( const int fd ) const
+{
+    impl->wait_lock();
+
+    const auto it = impl->fd_map.find( fd );
+    if ( it == impl->fd_map.end() )
+    {
+        impl->unlock();
+        return "";
+    }
+
+    const char* sub_protocol = it->second.sub_protocol.c_str();
+
+    impl->unlock();
+
+    return sub_protocol;
 }

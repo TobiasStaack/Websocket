@@ -21,13 +21,19 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+#define HANDSHAKE_LIMIT 16384
+
 #include <websocket/core/handshake.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 #include <mbedtls/base64.h>
 #include <mbedtls/ctr_drbg.h>
@@ -50,6 +56,12 @@ constexpr_strlen( const char* s )
     return *s ? 1 + constexpr_strlen( s + 1 ) : 0;
 }
 
+/**
+ * @brief Converts a string to lower case.
+ *
+ * @param[in] str The string to convert.
+ * @return The lower case form of the string.
+ */
 static std::string
 string_to_lower( const std::string& str )
 {
@@ -57,12 +69,19 @@ string_to_lower( const std::string& str )
 
     std::transform( result.begin(), result.end(), result.begin(), []( const unsigned char c )
     {
-        return std::tolower( c );
+        return static_cast< char >( std::tolower( c ) );
     } );
 
     return result;
 }
 
+/**
+ * @brief Checks whether a string contains a substring, ignoring case.
+ *
+ * @param[in] main_str The string to search in.
+ * @param[in] sub_str The substring to look for.
+ * @return `true` when the substring occurs.
+ */
 static bool
 string_contains_case_insensitive( const std::string& main_str, const std::string& sub_str )
 {
@@ -70,6 +89,298 @@ string_contains_case_insensitive( const std::string& main_str, const std::string
     const std::string lower_sub_str = string_to_lower( sub_str );
 
     return lower_main_str.find( lower_sub_str ) != std::string::npos;
+}
+
+/**
+ * @brief Compares two strings ignoring case.
+ *
+ * @param[in] lhs The left string.
+ * @param[in] rhs The right string.
+ * @return `true` when both strings match.
+ */
+static bool
+string_equals_case_insensitive( const std::string& lhs, const std::string& rhs )
+{
+    return string_to_lower( lhs ) == string_to_lower( rhs );
+}
+
+/**
+ * @brief Checks whether a value is the base64 encoding of a 16 byte nonce.
+ *
+ * @param value The header field value to inspect.
+ * @return `true` when the value is a well formed 24 character base64 block.
+ */
+static bool
+is_base64_nonce( const std::string& value )
+{
+    if ( value.size() != 24 || value.compare( 22, 2, "==" ) != 0 )
+    {
+        return false;
+    }
+
+    for ( size_t i = 0; i < 22; ++i )
+    {
+        const char c = value[ i ];
+
+        if ( !std::isalnum( static_cast< unsigned char >( c ) ) && c != '+' && c != '/' )
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
+ * @brief Extracts the host of an origin without its scheme, port and path.
+ *
+ * @param origin The origin header field value.
+ * @return The bare host of the origin.
+ */
+static std::string
+origin_host( const std::string& origin )
+{
+    std::string result = origin;
+
+    const size_t scheme = result.find( "://" );
+    if ( scheme != std::string::npos )
+    {
+        result = result.substr( scheme + 3 );
+    }
+
+    const size_t end = result.find_first_of( "/:" );
+    if ( end != std::string::npos )
+    {
+        result = result.substr( 0, end );
+    }
+
+    return result;
+}
+
+/**
+ * @brief Compares the authority a client sent against the one the server is configured for.
+ *
+ * A configured authority without a port matches any port the client dials, which is what
+ * RFC 6455 section 4.2.1 asks for: the server only has to recognise the authority as its own.
+ * A configured port is compared as well, so a server bound to one port can reject another.
+ *
+ * @param header_host The `Host` header field value sent by the client.
+ * @param host The authority the server was configured with.
+ * @return `true` when the client addressed this server.
+ */
+static bool
+authority_matches( const std::string& header_host, const char* host )
+{
+    if ( host == 0 || host[ 0 ] == '\0' )
+    {
+        return true;
+    }
+
+    const std::string configured( host );
+
+    if ( string_equals_case_insensitive( header_host, configured ) )
+    {
+        return true;
+    }
+
+    // a configured authority without a port ignores the port the client dialled
+    if ( configured.find( ':' ) != std::string::npos )
+    {
+        return false;
+    }
+
+    const size_t port = header_host.rfind( ':' );
+
+    // an ipv6 literal keeps its colons inside brackets, only a trailing port may be dropped
+    if ( port == std::string::npos || header_host.find( ']', port ) != std::string::npos )
+    {
+        return false;
+    }
+
+    return string_equals_case_insensitive( header_host.substr( 0, port ), configured );
+}
+
+/**
+ * @brief Removes leading and trailing whitespace.
+ *
+ * @param[in] str The string to trim.
+ * @return The trimmed string.
+ */
+static std::string
+string_trim( const std::string& str )
+{
+    const size_t start = str.find_first_not_of( " \t\r\n" );
+    const size_t end = str.find_last_not_of( " \t\r\n" );
+
+    return start == std::string::npos ? "" : str.substr( start, end - start + 1 );
+}
+
+/**
+ * @brief Splits a comma separated header field value into its trimmed items.
+ *
+ * @param value The header field value to split.
+ * @return The items of the list, empty items are dropped.
+ */
+static std::vector< std::string >
+split_list( const std::string& value )
+{
+    std::vector< std::string > items;
+
+    size_t offset = 0;
+
+    while ( offset <= value.size() )
+    {
+        const size_t comma = value.find( ',', offset );
+        const size_t end = comma == std::string::npos ? value.size() : comma;
+
+        const std::string item = string_trim( value.substr( offset, end - offset ) );
+        if ( item.empty() == false )
+        {
+            items.push_back( item );
+        }
+
+        if ( comma == std::string::npos )
+        {
+            break;
+        }
+
+        offset = comma + 1;
+    }
+
+    return items;
+}
+
+/**
+ * @brief A single extension offer of a `Sec-WebSocket-Extensions` header field.
+ */
+struct extension_offer_t
+{
+    std::string name;
+    std::vector< std::pair< std::string, std::string > > params;
+
+    bool
+    has( const std::string& key ) const
+    {
+        for ( size_t i = 0; i < params.size(); ++i )
+        {
+            if ( params[ i ].first == key )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+};
+
+/**
+ * @brief Parses a `Sec-WebSocket-Extensions` header field as described in RFC 7692 section 7.
+ *
+ * @param value The header field value to parse.
+ * @return One entry per offered extension, in the order they were offered.
+ */
+static std::vector< extension_offer_t >
+parse_extension_offers( const std::string& value )
+{
+    std::vector< extension_offer_t > offers;
+
+    const std::vector< std::string > items = split_list( value );
+
+    for ( size_t i = 0; i < items.size(); ++i )
+    {
+        const std::string& item = items[ i ];
+
+        extension_offer_t offer;
+
+        size_t offset = 0;
+
+        while ( offset <= item.size() )
+        {
+            const size_t semicolon = item.find( ';', offset );
+            const size_t end = semicolon == std::string::npos ? item.size() : semicolon;
+
+            const std::string token = string_trim( item.substr( offset, end - offset ) );
+
+            if ( token.empty() == false )
+            {
+                if ( offer.name.empty() )
+                {
+                    offer.name = string_to_lower( token );
+                }
+                else
+                {
+                    const size_t equals = token.find( '=' );
+
+                    if ( equals == std::string::npos )
+                    {
+                        offer.params.push_back( std::make_pair( string_to_lower( token ), std::string() ) );
+                    }
+                    else
+                    {
+                        std::string param_value = string_trim( token.substr( equals + 1 ) );
+
+                        // rfc 7692 7: a parameter value may be quoted
+                        if ( param_value.size() >= 2 && param_value[ 0 ] == '"' && param_value[ param_value.size() - 1 ] == '"' )
+                        {
+                            param_value = param_value.substr( 1, param_value.size() - 2 );
+                        }
+
+                        offer.params.push_back( std::make_pair( string_to_lower( string_trim( token.substr( 0, equals ) ) ), param_value ) );
+                    }
+                }
+            }
+
+            if ( semicolon == std::string::npos )
+            {
+                break;
+            }
+
+            offset = semicolon + 1;
+        }
+
+        if ( offer.name.empty() == false )
+        {
+            offers.push_back( offer );
+        }
+    }
+
+    return offers;
+}
+
+/**
+ * @brief Reads a window size parameter and validates its range.
+ *
+ * @param value The parameter value, an empty string means the peer left the choice open.
+ * @param out_bits Receives the parsed window size.
+ * @return `true` when the value is absent or a valid window size between 8 and 15.
+ */
+static bool
+parse_window_bits( const std::string& value, unsigned char& out_bits )
+{
+    if ( value.empty() )
+    {
+        return true;
+    }
+
+    for ( size_t i = 0; i < value.size(); ++i )
+    {
+        if ( std::isdigit( static_cast< unsigned char >( value[ i ] ) ) == 0 )
+        {
+            return false;
+        }
+    }
+
+    const int bits = std::atoi( value.c_str() );
+
+    // rfc 7692 7.1.2: the window size ranges from 8 to 15
+    if ( bits < 8 || bits > 15 )
+    {
+        return false;
+    }
+
+    out_bits = static_cast< unsigned char >( bits );
+
+    return true;
 }
 
 /**
@@ -181,7 +492,7 @@ c_ws_handshake::secret( const std::string& input, std::string& output )
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::create( const char* host, const char* origin, const char* channel, c_byte_stream* output, std::string& out_accept_key, const ws_extensions_t* extensions )
+c_ws_handshake::create( const char* host, const char* origin, const char* channel, const char* sub_protocols, c_byte_stream* output, std::string& out_accept_key, const ws_extensions_t* extensions )
 {
     if ( output == 0 )
     {
@@ -216,19 +527,25 @@ c_ws_handshake::create( const char* host, const char* origin, const char* channe
     // create request
     c_byte_stream request;
 
-    request << "GET " << channel << " HTTP/1.1\r\n";
+    request << "GET " << ( channel && channel[ 0 ] != '\0' ? channel : "/" ) << " HTTP/1.1\r\n";
     request << "Host: " << host << "\r\n";
     request << "Upgrade: websocket\r\n";
     request << "Connection: Upgrade\r\n";
     request << "Sec-WebSocket-Key: " << b64 << "\r\n";
     request << "Sec-WebSocket-Version: 13\r\n";
 
+    if ( sub_protocols && sub_protocols[ 0 ] != '\0' )
+    {
+        request << "Sec-WebSocket-Protocol: " << sub_protocols << "\r\n";
+    }
+
     if ( extensions && extensions->permessage_deflate.enabled )
     {
         request << "Sec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover; client_max_window_bits=" << static_cast< int >( extensions->permessage_deflate.window_bits ) << "\r\n";
     }
 
-    if ( origin )
+    // rfc 6454 7.1: an origin is either a serialized origin or the literal null, never empty
+    if ( origin && origin[ 0 ] != '\0' )
     {
         request << "Origin: " << origin << "\r\n";
     }
@@ -246,7 +563,7 @@ c_ws_handshake::create( const char* host, const char* origin, const char* channe
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_byte_stream* output, ws_extensions_t* extensions )
+c_ws_handshake::client( const char* accept_key, const char* sub_protocols, const c_byte_stream* input, c_byte_stream* output, const ws_extensions_t* offered_extensions, ws_extensions_t* extensions, std::string& out_sub_protocol )
 {
     if ( output == 0 )
     {
@@ -259,13 +576,27 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
         return error;
     }
 
-    if ( !input->available() )
+    if ( input->available() == false )
     {
         return busy;
     }
 
     c_http http;
-    if ( c_http::parse( input, http ) != c_http::e_status::ok )
+    const c_http::e_status status_parse = c_http::parse( input, http );
+
+    // the handshake may arrive across several segments, wait until the field block is complete
+    if ( status_parse == c_http::e_status::no_http_header )
+    {
+        if ( input->size() > HANDSHAKE_LIMIT )
+        {
+            c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+            return error;
+        }
+
+        return busy;
+    }
+
+    if ( status_parse != c_http::e_status::ok )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -291,7 +622,7 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
         return error;
     }
 
-    const std::map< std::string, std::string > headers = http.get_headers();
+    const http_headers_t headers = http.get_headers();
 
     // verify required attributes are present
     if ( headers.find( "Upgrade" ) == headers.end() ||
@@ -305,7 +636,7 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
     // verify |Upgrade| header field contains websocket
     const std::string header_upgrade = headers.at( "Upgrade" );
 
-    if ( !string_contains_case_insensitive( header_upgrade, "websocket" ) )
+    if ( string_contains_case_insensitive( header_upgrade, "websocket" ) == false )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -314,7 +645,7 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
     // verify |Connection| header field contains upgrade
     const std::string header_connection = headers.at( "Connection" );
 
-    if ( !string_contains_case_insensitive( header_connection, "upgrade" ) )
+    if ( string_contains_case_insensitive( header_connection, "upgrade" ) == false )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -329,72 +660,95 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
         return error;
     }
 
+    // rfc 6455 4.1: the server must not name a subprotocol the client did not request
+    if ( headers.find( "Sec-WebSocket-Protocol" ) != headers.end() )
+    {
+        const std::string confirmed = string_trim( headers.at( "Sec-WebSocket-Protocol" ) );
+        const std::vector< std::string > requested = split_list( sub_protocols ? sub_protocols : "" );
+
+        if ( std::find( requested.begin(), requested.end(), confirmed ) == requested.end() )
+        {
+            c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+            return error;
+        }
+
+        out_sub_protocol = confirmed;
+    }
+
+    if ( extensions )
+    {
+        extensions->permessage_deflate.enabled = false;
+    }
+
     if ( headers.find( "Sec-WebSocket-Extensions" ) != headers.end() )
     {
-        const std::string header_extensions = headers.at( "Sec-WebSocket-Extensions" );
+        const std::vector< extension_offer_t > confirmed = parse_extension_offers( headers.at( "Sec-WebSocket-Extensions" ) );
 
-        // check if permessage-deflate is enabled and enforce no-context-takeover (matches per-message zlib state)
-        if ( header_extensions.find( "permessage-deflate" ) != std::string::npos )
+        for ( size_t i = 0; i < confirmed.size(); ++i )
         {
-            bool got_client_no_context_takeover = false;
-            bool got_server_no_context_takeover = false;
+            const extension_offer_t& agreed = confirmed[ i ];
 
-            if ( header_extensions.find( "client_no_context_takeover" ) != std::string::npos )
+            // rfc 6455 4.1: the server must not confirm an extension the client did not offer
+            if ( agreed.name != "permessage-deflate" || !offered_extensions || !offered_extensions->permessage_deflate.enabled )
             {
-                got_client_no_context_takeover = true;
+                c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+                return error;
             }
 
-            if ( header_extensions.find( "server_no_context_takeover" ) != std::string::npos )
-            {
-                got_server_no_context_takeover = true;
-            }
+            unsigned char inflate_window_bits = 15;
+            unsigned char deflate_window_bits = 15;
 
-            int server_max_window_bits = 15;
+            bool no_context_takeover = false;
 
-            const size_t pos = header_extensions.find( "server_max_window_bits" );
-            if ( pos != std::string::npos )
+            for ( size_t j = 0; j < agreed.params.size(); ++j )
             {
-                const size_t equals_pos = header_extensions.find( '=', pos );
-                if ( equals_pos != std::string::npos )
+                const std::string& key = agreed.params[ j ].first;
+                const std::string& value = agreed.params[ j ].second;
+
+                bool usable = true;
+
+                if ( key == "client_no_context_takeover" )
                 {
-                    size_t end_pos = header_extensions.find_first_of( ";, \r\n", equals_pos + 1 );
-                    if ( end_pos == std::string::npos )
-                    {
-                        end_pos = header_extensions.size();
-                    }
-
-                    try
-                    {
-                        server_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1, end_pos - ( equals_pos + 1 ) ) );
-                    }
-                    catch ( ... )
-                    {
-                        c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
-                        return error;
-                    }
+                    no_context_takeover = value.empty();
+                    usable = no_context_takeover;
                 }
+                else if ( key == "server_no_context_takeover" )
+                {
+                    usable = value.empty();
+                }
+                else if ( key == "server_max_window_bits" )
+                {
+                    usable = parse_window_bits( value, inflate_window_bits ) == true && value.empty() == false;
+                }
+                else if ( key == "client_max_window_bits" )
+                {
+                    usable = parse_window_bits( value, deflate_window_bits ) == true && value.empty() == false;
+                }
+                else
+                {
+                    usable = false;
+                }
+
+                if ( usable == false )
+                {
+                    c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+                    return error;
+                }
+            }
+
+            // this implementation keeps no zlib context between messages, so a response without it is unusable
+            if ( no_context_takeover == false )
+            {
+                c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+                return error;
             }
 
             if ( extensions )
             {
-                if ( got_client_no_context_takeover == true && got_server_no_context_takeover == true )
-                {
-                    if ( server_max_window_bits < 8 )
-                    {
-                        server_max_window_bits = 8;
-                    }
-                    if ( server_max_window_bits > 15 )
-                    {
-                        server_max_window_bits = 15;
-                    }
-
-                    extensions->permessage_deflate.enabled = true;
-                    extensions->permessage_deflate.window_bits = static_cast< unsigned char >( server_max_window_bits );
-                }
-                else
-                {
-                    extensions->permessage_deflate.enabled = false;
-                }
+                extensions->permessage_deflate.enabled = true;
+                extensions->permessage_deflate.window_bits = deflate_window_bits;
+                extensions->permessage_deflate.deflate_window_bits = deflate_window_bits;
+                extensions->permessage_deflate.inflate_window_bits = inflate_window_bits;
             }
         }
     }
@@ -403,7 +757,7 @@ c_ws_handshake::client( const char* accept_key, const c_byte_stream* input, c_by
 }
 
 c_ws_handshake::e_status
-c_ws_handshake::server( const char* host, const char* origin, const c_byte_stream* input, c_byte_stream* output, const ws_extensions_t* server_extensions, ws_extensions_t* client_extensions )
+c_ws_handshake::server( const char* host, const char* origin, const char* sub_protocols, const c_byte_stream* input, c_byte_stream* output, const ws_extensions_t* server_extensions, ws_extensions_t* client_extensions, std::string& out_sub_protocol )
 {
     if ( output == 0 )
     {
@@ -416,13 +770,27 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
         return error;
     }
 
-    if ( !input->available() )
+    if ( input->available() == false )
     {
         return busy;
     }
 
     c_http http;
-    if ( c_http::parse( input, http ) != c_http::e_status::ok )
+    const c_http::e_status status_parse = c_http::parse( input, http );
+
+    // the handshake may arrive across several segments, wait until the field block is complete
+    if ( status_parse == c_http::e_status::no_http_header )
+    {
+        if ( input->size() > HANDSHAKE_LIMIT )
+        {
+            c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
+            return error;
+        }
+
+        return busy;
+    }
+
+    if ( status_parse != c_http::e_status::ok )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -442,7 +810,14 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
         return error;
     }
 
-    const std::map< std::string, std::string > headers = http.get_headers();
+    // rfc 6455 4.1: the handshake must be a http get request
+    if ( http.get_method() != c_http::e_method::http_method_get )
+    {
+        c_http::respond( c_http::e_status_code::http_status_code_method_not_allowed, output );
+        return error;
+    }
+
+    const http_headers_t headers = http.get_headers();
 
     // verify required attributes are present
     if ( headers.find( "Host" ) == headers.end() ||
@@ -458,7 +833,7 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
     // verify |Host| header field containing the server's authority
     const std::string header_host = headers.at( "Host" );
 
-    if ( std::strcmp( header_host.c_str(), host ) != 0 )
+    if ( authority_matches( header_host, host ) == false )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -467,7 +842,7 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
     // verify |Upgrade| header field contains websocket
     const std::string header_upgrade = headers.at( "Upgrade" );
 
-    if ( !string_contains_case_insensitive( header_upgrade, "websocket" ) )
+    if ( string_contains_case_insensitive( header_upgrade, "websocket" ) == false )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -476,7 +851,7 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
     // verify |Connection| header field contains upgrade
     const std::string header_connection = headers.at( "Connection" );
 
-    if ( !string_contains_case_insensitive( header_connection, "upgrade" ) )
+    if ( string_contains_case_insensitive( header_connection, "upgrade" ) == false )
     {
         c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
@@ -487,7 +862,15 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
 
     if ( std::strcmp( version.c_str(), "13" ) != 0 )
     {
-        c_http::respond( c_http::e_status_code::http_status_code_upgrade_required, output );
+        // rfc 6455 4.2.2: the response must name the versions the server understands
+        c_http::respond( c_http::e_status_code::http_status_code_upgrade_required, output, "Sec-WebSocket-Version: 13" );
+        return error;
+    }
+
+    // rfc 6455 4.1: |Sec-WebSocket-Key| is a base64 encoded 16 byte nonce
+    if ( is_base64_nonce( headers.at( "Sec-WebSocket-Key" ) ) == false )
+    {
+        c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
         return error;
     }
 
@@ -502,99 +885,122 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
 
         const std::string header_origin = headers.at( "Origin" );
 
-        if ( !string_contains_case_insensitive( header_origin, host ) )
+        // rfc 6455 10.2: the origin must match exactly, a substring test accepts lookalike hosts
+        if ( string_equals_case_insensitive( origin_host( header_origin ), origin_host( origin ) ) == false )
         {
             c_http::respond( c_http::e_status_code::http_status_code_forbidden, output );
             return error;
         }
     }
 
-    // todo: [optional] verify |Sec-WebSocket-Protocol| header field
-    /*
-        Optionally, a |Sec-WebSocket-Protocol| header field, with a list
-        of values indicating which protocols the client would like to
-        speak, ordered by preference.
-    */
+    // rfc 6455 4.2.2: pick the first requested subprotocol the server supports, or none at all
+    std::string accepted_protocol;
+
+    if ( headers.find( "Sec-WebSocket-Protocol" ) != headers.end() )
+    {
+        const std::vector< std::string > requested = split_list( headers.at( "Sec-WebSocket-Protocol" ) );
+        const std::vector< std::string > supported = split_list( sub_protocols ? sub_protocols : "" );
+
+        for ( size_t i = 0; i < requested.size() && accepted_protocol.empty(); ++i )
+        {
+            for ( size_t j = 0; j < supported.size(); ++j )
+            {
+                if ( requested[ i ] == supported[ j ] )
+                {
+                    accepted_protocol = supported[ j ];
+                    break;
+                }
+            }
+        }
+    }
 
     if ( client_extensions )
     {
         client_extensions->permessage_deflate.enabled = false;
     }
 
-    if ( headers.find( "Sec-WebSocket-Extensions" ) != headers.end() )
+    // rfc 7692 7.1: accept the first permessage-deflate offer the server can serve
+    std::string extension_response;
+
+    if ( headers.find( "Sec-WebSocket-Extensions" ) != headers.end() && client_extensions && server_extensions && server_extensions->permessage_deflate.enabled )
     {
-        const std::string header_extensions = headers.at( "Sec-WebSocket-Extensions" );
+        const std::vector< extension_offer_t > offers = parse_extension_offers( headers.at( "Sec-WebSocket-Extensions" ) );
 
-        // check if permessage-deflate is requested and enforce no-context-takeover (matches per-message zlib state)
-        if ( header_extensions.find( "permessage-deflate" ) != std::string::npos )
+        for ( size_t i = 0; i < offers.size() && extension_response.empty(); ++i )
         {
-            bool req_client_no_context_takeover = false;
-            bool req_server_no_context_takeover = false;
+            const extension_offer_t& offer = offers[ i ];
 
-            if ( header_extensions.find( "client_no_context_takeover" ) != std::string::npos )
+            if ( offer.name != "permessage-deflate" )
             {
-                req_client_no_context_takeover = true;
+                continue;
             }
 
-            if ( header_extensions.find( "server_no_context_takeover" ) != std::string::npos )
-            {
-                req_server_no_context_takeover = true;
-            }
+            unsigned char deflate_window_bits = server_extensions->permessage_deflate.window_bits;
+            unsigned char inflate_window_bits = 15;
 
-            int client_max_window_bits = 15;
+            bool usable = true;
 
-            const size_t pos = header_extensions.find( "client_max_window_bits" );
-            if ( pos != std::string::npos )
+            for ( size_t j = 0; j < offer.params.size() && usable; ++j )
             {
-                const size_t equals_pos = header_extensions.find( '=', pos );
-                if ( equals_pos != std::string::npos )
+                const std::string& key = offer.params[ j ].first;
+                const std::string& value = offer.params[ j ].second;
+
+                if ( key == "client_no_context_takeover" || key == "server_no_context_takeover" )
                 {
-                    size_t end_pos = header_extensions.find_first_of( ";, \r\n", equals_pos + 1 );
-                    if ( end_pos == std::string::npos )
-                    {
-                        end_pos = header_extensions.size();
-                    }
+                    usable = value.empty();
+                }
+                else if ( key == "server_max_window_bits" )
+                {
+                    unsigned char bits = 15;
+                    usable = parse_window_bits( value, bits ) == true && value.empty() == false;
 
-                    try
+                    if ( usable && bits < deflate_window_bits )
                     {
-                        client_max_window_bits = std::stoi( header_extensions.substr( equals_pos + 1, end_pos - ( equals_pos + 1 ) ) );
-                    }
-                    catch ( ... )
-                    {
-                        c_http::respond( c_http::e_status_code::http_status_code_bad_request, output );
-                        return error;
+                        deflate_window_bits = bits;
                     }
                 }
-            }
-
-            if ( client_max_window_bits < 8 )
-            {
-                client_max_window_bits = 8;
-            }
-            if ( client_max_window_bits > 15 )
-            {
-                client_max_window_bits = 15;
-            }
-
-            if ( client_extensions )
-            {
-                if ( server_extensions && server_extensions->permessage_deflate.enabled )
+                else if ( key == "client_max_window_bits" )
                 {
-                    if ( req_client_no_context_takeover == true && req_server_no_context_takeover == true )
-                    {
-                        client_extensions->permessage_deflate.enabled = true;
-                        client_extensions->permessage_deflate.window_bits = static_cast< unsigned char >( client_max_window_bits );
-                    }
-                    else
-                    {
-                        client_extensions->permessage_deflate.enabled = false;
-                    }
+                    usable = parse_window_bits( value, inflate_window_bits );
                 }
                 else
                 {
-                    client_extensions->permessage_deflate.enabled = false;
+                    // rfc 7692 7.1: an offer with an unknown parameter must be declined
+                    usable = false;
                 }
             }
+
+            if ( usable == false )
+            {
+                continue;
+            }
+
+            // this implementation keeps no zlib context between messages, so both sides must not take one over
+            extension_response = "permessage-deflate; client_no_context_takeover; server_no_context_takeover";
+
+            if ( deflate_window_bits != 15 )
+            {
+                std::ostringstream stream;
+                stream << "; server_max_window_bits=" << static_cast< int >( deflate_window_bits );
+                extension_response += stream.str();
+            }
+
+            // rfc 7692 7.1.2.2: client_max_window_bits may only be answered when the client offered it
+            if ( offer.has( "client_max_window_bits" ) && inflate_window_bits != 15 )
+            {
+                std::ostringstream stream;
+                stream << "; client_max_window_bits=" << static_cast< int >( inflate_window_bits );
+                extension_response += stream.str();
+            }
+            else
+            {
+                inflate_window_bits = 15;
+            }
+
+            client_extensions->permessage_deflate.enabled = true;
+            client_extensions->permessage_deflate.window_bits = deflate_window_bits;
+            client_extensions->permessage_deflate.deflate_window_bits = deflate_window_bits;
+            client_extensions->permessage_deflate.inflate_window_bits = inflate_window_bits;
         }
     }
 
@@ -613,16 +1019,16 @@ c_ws_handshake::server( const char* host, const char* origin, const c_byte_strea
     *output << "Connection: Upgrade\r\n";
     *output << "Sec-WebSocket-Accept: " << accept.c_str() << "\r\n";
 
-    if ( client_extensions && client_extensions->permessage_deflate.enabled )
+    if ( accepted_protocol.empty() == false )
     {
-        *output << "Sec-WebSocket-Extensions: permessage-deflate; client_no_context_takeover; server_no_context_takeover";
+        *output << "Sec-WebSocket-Protocol: " << accepted_protocol.c_str() << "\r\n";
 
-        if ( server_extensions && server_extensions->permessage_deflate.window_bits != client_extensions->permessage_deflate.window_bits )
-        {
-            *output << "; server_max_window_bits=" << static_cast< int >( server_extensions->permessage_deflate.window_bits );
-        }
+        out_sub_protocol = accepted_protocol;
+    }
 
-        *output << "\r\n";
+    if ( extension_response.empty() == false )
+    {
+        *output << "Sec-WebSocket-Extensions: " << extension_response.c_str() << "\r\n";
     }
 
     *output << "\r\n";

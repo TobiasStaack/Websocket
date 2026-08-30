@@ -116,9 +116,9 @@ class WEBSOCKET_API c_websocket
      * openings in the C API. It is triggered when the WebSocket handshake is
      * successfully completed.
      *
-     * @param ctx The address of the current WebSocket context.
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param addr The address of the connected peer.
+     * @param[in] ctx The address of the current WebSocket context.
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] addr The address of the connected peer.
      */
     typedef void ( *t_event_open )( void *ctx, int fd, const char *addr );
 
@@ -129,9 +129,9 @@ class WEBSOCKET_API c_websocket
      * closures in the C API. It is triggered when the WebSocket connection
      * is closed by either the server or the client.
      *
-     * @param ctx The address of the current WebSocket context.
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param status The status code indicating the closure reason.
+     * @param[in] ctx The address of the current WebSocket context.
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] status The status code indicating the closure reason.
      */
     typedef void ( *t_event_close )( void *ctx, int fd, e_ws_closure_status status );
 
@@ -142,11 +142,11 @@ class WEBSOCKET_API c_websocket
      * reception in the C API. It is triggered when a WebSocket frame with
      * text or binary data is received.
      *
-     * @param ctx The address of the current WebSocket context.
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param opcode The opcode of the WebSocket frame, indicating its type (e.g., text, binary).
-     * @param payload A pointer to the payload data received.
-     * @param size The size of the payload in bytes.
+     * @param[in] ctx The address of the current WebSocket context.
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] opcode The opcode of the WebSocket frame, indicating its type (e.g., text, binary).
+     * @param[in] payload A pointer to the payload data received.
+     * @param[in] size The size of the payload in bytes.
      */
     typedef void ( *t_event_frame )( void *ctx, int fd, e_ws_frame_opcode opcode, unsigned char *payload, size_t size );
 
@@ -157,8 +157,8 @@ class WEBSOCKET_API c_websocket
      * the C API. It is triggered when an error occurs during WebSocket
      * communication.
      *
-     * @param ctx The address of the current WebSocket context.
-     * @param message A descriptive message of the error that occurred.
+     * @param[in] ctx The address of the current WebSocket context.
+     * @param[in] message A descriptive message of the error that occurred.
      */
     typedef void ( *t_event_error )( void *ctx, const char *message );
 
@@ -169,8 +169,8 @@ class WEBSOCKET_API c_websocket
      * the WebSocket `open` event. It is called once the WebSocket handshake
      * has been successfully completed.
      *
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param addr The address of the connected peer.
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] addr The address of the connected peer.
      */
     virtual void
     on_open( int fd, const char *addr );
@@ -182,10 +182,14 @@ class WEBSOCKET_API c_websocket
      * text or binary data. It will only be triggered for frames with `TEXT` or `BINARY`
      * opcodes. Any other opcodes (e.g., ping, pong, or close) are handled internally.
      *
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param opcode The opcode of the WebSocket frame, indicating the frame type (TEXT or BINARY).
-     * @param payload A pointer to the payload data received in the frame.
-     * @param size The size of the payload in bytes.
+     * The callback runs inside `operate` so messages of one connection arrive in the
+     * order they were sent. A long running callback delays every other connection,
+     * so hand lengthy work to a worker of your own.
+     *
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] opcode The opcode of the WebSocket frame, indicating the frame type (TEXT or BINARY).
+     * @param[in] payload A pointer to the payload data received in the frame.
+     * @param[in] size The size of the payload in bytes.
      */
     virtual void
     on_frame( int fd, e_ws_frame_opcode opcode, unsigned char *payload, size_t size );
@@ -197,8 +201,8 @@ class WEBSOCKET_API c_websocket
      * It is called when the WebSocket connection is closed either by the server
      * or the client.
      *
-     * @param fd The file descriptor of the WebSocket connection.
-     * @param status The status code indicating the closure reason.
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @param[in] status The status code indicating the closure reason.
      */
     virtual void
     on_close( int fd, e_ws_closure_status status );
@@ -209,18 +213,32 @@ class WEBSOCKET_API c_websocket
      * This method should be overridden to handle WebSocket errors, such as
      * connection issues or unexpected conditions during communication.
      *
-     * @param message A descriptive message of the error that occurred.
+     * @param[in] message A descriptive message of the error that occurred.
      */
     virtual void
     on_error( const char *message );
 
 public:
+    /**
+     * @brief Creates an unconfigured WebSocket instance.
+     *
+     * Call `setup` before binding or opening a connection.
+     */
     c_websocket();
 
+    /**
+     * @brief Closes every managed file descriptor and releases the instance.
+     */
     virtual ~c_websocket();
 
+    /**
+     * @brief Copying is disabled, an instance owns its file descriptors.
+     */
     c_websocket( const c_websocket &rhs ) = delete;
 
+    /**
+     * @brief Copy assignment is disabled, an instance owns its file descriptors.
+     */
     c_websocket &
     operator=( const c_websocket &rhs ) = delete;
 
@@ -232,7 +250,7 @@ public:
      * opening connections, or starting the communication loop. It configures
      * the WebSocket with the provided settings.
      *
-     * @param settings A pointer to a `ws_settings_t` structure that contains the
+     * @param[in] settings A pointer to a `ws_settings_t` structure that contains the
      *                 configuration settings for the WebSocket.
      * @return An `e_ws_status` code indicating the result of the operation:
      *         - `e_ws_status::status_ok` if the settings were successfully applied.
@@ -248,9 +266,9 @@ public:
      * WebSocket communication. It creates a listening socket on the specified
      * interface and port. The resulting file descriptor is stored in `out_fd`.
      *
-     * @param bind_ip The IP address to bind to. If set to `NULL`, it will bind to all interfaces.
-     * @param bind_port The port to bind to.
-     * @param out_fd A pointer to an integer where the bound file descriptor will be stored.
+     * @param[in] bind_ip The IP address to bind to. If set to `NULL`, it will bind to all interfaces.
+     * @param[in] bind_port The port to bind to.
+     * @param[out] out_fd A pointer to an integer where the bound file descriptor will be stored.
      *               This can be set to `NULL` if the file descriptor is not needed.
      * @return An `e_ws_status` code indicating the result of the operation:
      *         - `e_ws_status::status_ok` on success.
@@ -266,8 +284,8 @@ public:
      * It creates a listening socket on all available interfaces. The resulting file descriptor
      * is stored in `out_fd`.
      *
-     * @param bind_port The port to bind to.
-     * @param out_fd A pointer to an integer where the bound file descriptor will be stored.
+     * @param[in] bind_port The port to bind to.
+     * @param[out] out_fd A pointer to an integer where the bound file descriptor will be stored.
      *               This can be set to `NULL` if the file descriptor is not needed.
      * @return An `e_ws_status` code indicating the result of the operation:
      *         - `e_ws_status::status_ok` on success.
@@ -283,9 +301,9 @@ public:
      * and port for WebSocket communication. It creates a socket and stores
      * the resulting file descriptor in `out_fd`.
      *
-     * @param host_name The hostname or IP address of the destination to connect to.
-     * @param host_port The port number of the destination service to connect to.
-     * @param out_fd A pointer to an integer where the opened file descriptor will be stored.
+     * @param[in] host_name The hostname or IP address of the destination to connect to.
+     * @param[in] host_port The port number of the destination service to connect to.
+     * @param[out] out_fd A pointer to an integer where the opened file descriptor will be stored.
      *               This can be set to `NULL` if the file descriptor is not needed.
      * @return An `e_ws_status` code indicating the result of the operation:
      *         - `e_ws_status::status_ok` on success.
@@ -301,7 +319,7 @@ public:
      * If the provided file descriptor (`fd`) is set to `-1`, it will close all
      * currently bound or opened file descriptors.
      *
-     * @param fd The file descriptor to close. If set to `-1`, all bound or opened
+     * @param[in] fd The file descriptor to close. If set to `-1`, all bound or opened
      *           file descriptors will be closed.
      */
     void
@@ -326,13 +344,13 @@ public:
      * #define WS_EVENT_ERROR "error"
      * ```
      *
-     * @param event The name of the event to listen for. It should be one of the
+     * @param[in] event The name of the event to listen for. It should be one of the
      *              following string literals:
      *              - `"open"`: for the connection opened event.
      *              - `"close"`: for the connection closed event.
      *              - `"frame"`: for the frame received event.
      *              - `"error"`: for the error event.
-     * @param callback A function pointer to the callback function that will be
+     * @param[in] callback A function pointer to the callback function that will be
      *                 invoked when the specified event occurs. The function pointer
      *                 must match one of the event typedefs defined earlier.
      * @return An `e_ws_status` code indicating the result of the operation:
@@ -367,9 +385,13 @@ public:
      * It is important to note that `emit` does not confirm the status of the outgoing
      * message; it only writes to the output stream of the specified file descriptor.
      *
-     * @param fd The file descriptor of the WebSocket connection to which the frame
+     * The frame keeps its payload, so the same frame may be emitted to several
+     * connections. Frames are only accepted while the connection is open, once the
+     * closure handshake has started RFC 6455 section 5.5.1 forbids further data frames.
+     *
+     * @param[in] fd The file descriptor of the WebSocket connection to which the frame
      *           will be sent.
-     * @param frame A pointer to a `c_ws_frame` object that contains the data to be
+     * @param[in] frame A pointer to a `c_ws_frame` object that contains the data to be
      *              sent.
      * @return An `e_ws_status` code indicating the result of the operation:
      *         - `e_ws_status::status_ok` on successful write to the output stream.
@@ -377,6 +399,15 @@ public:
      */
     e_ws_status
     emit( int fd, const c_ws_frame *frame ) const;
+
+    /**
+     * @brief Retrieves the subprotocol agreed on during the opening handshake.
+     *
+     * @param[in] fd The file descriptor of the WebSocket connection.
+     * @return The negotiated subprotocol, or an empty string when none was agreed on.
+     */
+    const char *
+    get_sub_protocol( int fd ) const;
 
 private:
     /**
@@ -420,6 +451,6 @@ private:
     t_event_error event_error_callback;
 
 private:
-    struct impl_t;
-    impl_t *impl;
+    struct impl_t; /**< @brief Opaque connection state, kept out of the public header. */
+    impl_t *impl;  /**< @brief Pointer to the connection state. */
 };

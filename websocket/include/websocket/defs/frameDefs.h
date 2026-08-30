@@ -12,7 +12,9 @@ enum class e_ws_frame_status : unsigned char
     status_invalid_data = 0x2, /**< Status indicates message is not valid */
     status_incomplete = 0x3, /**< Status indicates message is waiting for more information */
     status_fragment = 0x4, /**< Status indicates a message fragment was processed */
-    status_final = 0x5 /**< Status indicates the message is final */
+    status_final = 0x5, /**< Status indicates the message is final */
+    status_control = 0x6, /**< Status indicates a control frame was processed */
+    status_too_big = 0x7 /**< Status indicates the message exceeds the configured limit */
 };
 #endif
 

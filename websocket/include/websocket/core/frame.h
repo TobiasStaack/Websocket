@@ -60,29 +60,63 @@ class WEBSOCKET_API c_ws_frame final
      * This method is intended for internal use and is not accessible externally.
      *
      * @param[in] input Pointer to the input stream `c_byte_stream` containing frame data.
+     * @param[in] control Pointer to the frame receiving control frames, which must never be assembled into a fragmented message.
      * @return Status of the read operation as an `e_ws_frame_status`.
      *
      * @internal
      */
     e_ws_frame_status
-    read( const c_byte_stream *input ) const;
+    read( const c_byte_stream *input, const c_ws_frame *control ) const;
 
 public:
+    /**
+     * @brief Creates an empty binary frame.
+     */
     c_ws_frame();
 
+    /**
+     * @brief Creates an empty frame of the given type.
+     *
+     * @param[in] opcode The frame type, for example `opcode_text` or `opcode_binary`.
+     */
     explicit
     c_ws_frame( e_ws_frame_opcode opcode );
 
+    /**
+     * @brief Releases the payload held by the frame.
+     */
     ~
     c_ws_frame();
 
+    /**
+     * @brief Creates a frame holding a copy of another frame's payload and settings.
+     *
+     * @param[in] other The frame to copy.
+     */
     c_ws_frame( const c_ws_frame &other );
 
+    /**
+     * @brief Takes over another frame's payload, leaving it empty.
+     *
+     * @param[in,out] other The frame to move from.
+     */
     c_ws_frame( c_ws_frame &&other ) noexcept;
 
+    /**
+     * @brief Replaces this frame with a copy of another frame.
+     *
+     * @param[in] other The frame to copy.
+     * @return A reference to this frame.
+     */
     c_ws_frame &
     operator=( const c_ws_frame &other );
 
+    /**
+     * @brief Replaces this frame by taking over another frame's payload.
+     *
+     * @param[in,out] other The frame to move from.
+     * @return A reference to this frame.
+     */
     c_ws_frame &
     operator=( c_ws_frame &&other ) noexcept;
 
@@ -96,8 +130,46 @@ public:
     void
     mask( unsigned int key ) const;
 
+    /**
+     * @brief Sets the window size used to compress outgoing messages.
+     *
+     * RFC 7692 negotiates the window size per direction, so it may differ from
+     * the one passed to `inflate`.
+     *
+     * @param[in] window_bits The negotiated window size, 0 disables compression.
+     */
     void
     deflate( unsigned char window_bits ) const;
+
+    /**
+     * @brief Sets the window size used to decompress incoming messages.
+     *
+     * RFC 7692 negotiates the window size per direction, so it may differ from
+     * the one passed to `deflate`.
+     *
+     * @param[in] window_bits The negotiated window size, 0 disables decompression.
+     */
+    void
+    inflate( unsigned char window_bits ) const;
+
+    /**
+     * @brief Enforces the peer masking rule for incoming frames.
+     *
+     * A server must reject unmasked client frames and a client must reject masked
+     * server frames, as required by RFC 6455 section 5.1.
+     *
+     * @param[in] state `true` when incoming frames are required to be masked.
+     */
+    void
+    expect_mask( bool state ) const;
+
+    /**
+     * @brief Limits the size of an assembled message.
+     *
+     * @param[in] size Maximum message size in bytes, 0 disables the limit.
+     */
+    void
+    limit( size_t size ) const;
 
     /**
      * @brief Appends data to the WebSocket frame payload.
@@ -170,8 +242,14 @@ public:
     is_payload_utf8() const;
 
 private:
-    struct impl_t;
-    impl_t *impl;
+    struct impl_t; /**< @brief Opaque frame state, kept out of the public header. */
+    impl_t *impl;  /**< @brief Pointer to the frame state. */
 
+    /**
+     * @brief Grants the connection access to `read` and `write`.
+     *
+     * Encoding and decoding are driven by the connection, an application only fills
+     * a frame and hands it to `c_websocket::emit`.
+     */
     friend class c_websocket;
 };

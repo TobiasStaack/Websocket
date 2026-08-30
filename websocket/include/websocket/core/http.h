@@ -30,6 +30,25 @@ SOFTWARE.
 #include <string>
 
 /** \cond */
+
+/**
+ * @brief Case insensitive ordering for http field names as required by RFC 7230 section 3.2.
+ */
+struct http_field_less
+{
+    /**
+     * @brief Orders two field names ignoring their case.
+     *
+     * @param[in] lhs The left field name.
+     * @param[in] rhs The right field name.
+     * @return `true` when lhs sorts before rhs.
+     */
+    bool
+    operator()( const std::string &lhs, const std::string &rhs ) const;
+};
+
+typedef std::map< std::string, std::string, http_field_less > http_headers_t;
+
 class c_http final
 {
 public:
@@ -166,45 +185,106 @@ public:
     };
 
 private:
-    e_method method;
-    std::string resource;
-    e_version version;
-    e_status_code status_code;
-    std::string reason;
-    std::map< std::string, std::string > headers;
-    c_byte_stream body;
+    e_method method;           /**< @brief Request method, unknown for responses. */
+    std::string resource;      /**< @brief Requested resource, defaults to "/". */
+    e_version version;         /**< @brief Protocol version of the message. */
+    e_status_code status_code; /**< @brief Status code, only meaningful for responses. */
+    std::string reason;        /**< @brief Reason phrase accompanying the status code. */
+    http_headers_t headers;    /**< @brief Header fields, matched case insensitively. */
+    c_byte_stream body;        /**< @brief Message body following the field block. */
 
 public:
+    /**
+     * @brief Creates an empty message with unknown method and version.
+     */
     c_http();
 
+    /**
+     * @brief Releases the message body.
+     */
     ~
     c_http();
 
+    /**
+     * @brief Retrieves the request method.
+     *
+     * @return The method, `http_method_unknown` for responses.
+     */
     e_method
     get_method() const;
 
+    /**
+     * @brief Retrieves the requested resource.
+     *
+     * @return The resource path, "/" when the message carried none.
+     */
     const std::string &
     get_resource() const;
 
+    /**
+     * @brief Retrieves the protocol version.
+     *
+     * @return The version, `http_version_unknown` when it could not be parsed.
+     */
     e_version
     get_version() const;
 
+    /**
+     * @brief Retrieves the response status code.
+     *
+     * @return The status code, meaningful only for responses.
+     */
     e_status_code
     get_status_code() const;
 
+    /**
+     * @brief Retrieves the reason phrase.
+     *
+     * @return The reason phrase, empty when the message carried none.
+     */
     const std::string &
     get_reason() const;
 
-    const std::map< std::string, std::string > &
+    /**
+     * @brief Retrieves the header fields.
+     *
+     * Field names are compared case insensitively and repeated fields are joined
+     * into one comma separated value, as RFC 7230 section 3.2.2 prescribes.
+     *
+     * @return The header fields of the message.
+     */
+    const http_headers_t &
     get_headers() const;
 
+    /**
+     * @brief Retrieves the message body.
+     *
+     * @return The bytes following the field block.
+     */
     const c_byte_stream &
     get_body() const;
 
+    /**
+     * @brief Parses a request or response from a byte stream.
+     *
+     * The stream is left untouched, the caller decides when to consume it.
+     *
+     * @param[in] input Stream holding the message.
+     * @param[out] http Receives the parsed message.
+     * @return `ok` on success, `no_http_header` while the field block is still incomplete,
+     *         or another status describing what failed.
+     */
     static e_status
     parse( const c_byte_stream *input, c_http &http );
 
+    /**
+     * @brief Writes a minimal response with the given status code.
+     *
+     * @param[in] status_code The status code to send.
+     * @param[out] output Receives the response bytes.
+     * @param[in] extra_field Optional additional field line without the trailing CRLF, may be NULL.
+     */
     static void
-    respond( e_status_code status_code, c_byte_stream *output );
+    respond( e_status_code status_code, c_byte_stream *output, const char *extra_field = 0 );
 };
 /** \endcond */

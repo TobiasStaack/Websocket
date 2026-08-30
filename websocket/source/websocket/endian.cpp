@@ -106,7 +106,7 @@ c_endian::is_little()
 bool
 c_endian::is_big()
 {
-    return !is_little();
+    return is_little() == false;
 }
 
 unsigned short

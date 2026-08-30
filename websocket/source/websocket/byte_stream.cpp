@@ -679,7 +679,7 @@ c_byte_stream::impl_t::is_utf8() const
 {
     if ( container.empty() == true )
     {
-        return false;
+        return true;
     }
 
     size_t i = 0;
@@ -809,7 +809,7 @@ c_byte_stream::impl_t::to_utf8()
 {
     if ( container.empty() == true )
     {
-        return e_status::error;
+        return e_status::ok;
     }
 
     if ( is_utf8() == true )
@@ -945,7 +945,7 @@ c_byte_stream::impl_t::to_utf8()
         }
     }
 
-    if ( !has_utf8_bom && len >= 4 )
+    if ( has_utf8_bom == false && len >= 4 )
     {
         const unsigned int b0 = container[ 0 ];
         const unsigned int b1 = container[ 1 ];
@@ -966,7 +966,7 @@ c_byte_stream::impl_t::to_utf8()
         }
     }
 
-    if ( !has_utf8_bom && !has_utf32_bom && len >= 2 )
+    if ( has_utf8_bom == false && has_utf32_bom == false && len >= 2 )
     {
         const unsigned int b0 = container[ 0 ];
         const unsigned int b1 = container[ 1 ];
@@ -1180,7 +1180,7 @@ c_byte_stream::push( const unsigned char value ) const
 c_byte_stream::e_status
 c_byte_stream::push_async( const unsigned char value ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1207,7 +1207,7 @@ c_byte_stream::push( const unsigned char* source, const size_t size ) const
 c_byte_stream::e_status
 c_byte_stream::push_async( const unsigned char* source, const size_t size ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1234,7 +1234,7 @@ c_byte_stream::push_back( const unsigned char value ) const
 c_byte_stream::e_status
 c_byte_stream::push_back_async( const unsigned char value ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1261,7 +1261,7 @@ c_byte_stream::push_back( const unsigned char* source, const size_t size ) const
 c_byte_stream::e_status
 c_byte_stream::push_back_async( const unsigned char* source, const size_t size ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1286,7 +1286,7 @@ c_byte_stream::pull( unsigned char* destination, size_t& size, const size_t offs
 c_byte_stream::e_status
 c_byte_stream::pull_async( unsigned char* destination, size_t& size, const size_t offset ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1311,7 +1311,7 @@ c_byte_stream::pull_back( unsigned char* destination, size_t& size, const size_t
 c_byte_stream::e_status
 c_byte_stream::pull_back_async( unsigned char* destination, size_t& size, const size_t offset ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1338,7 +1338,7 @@ c_byte_stream::move( const c_byte_stream* destination, const size_t size, const 
 c_byte_stream::e_status
 c_byte_stream::move_async( const c_byte_stream* destination, const size_t size, const size_t offset ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1363,7 +1363,7 @@ c_byte_stream::copy( unsigned char* destination, const size_t size, size_t* avai
 c_byte_stream::e_status
 c_byte_stream::copy_async( unsigned char* destination, const size_t size, size_t* available, const size_t offset ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1394,7 +1394,7 @@ c_byte_stream::pop( const size_t size ) const
 c_byte_stream::e_status
 c_byte_stream::pop_async( const size_t size ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1419,7 +1419,7 @@ c_byte_stream::pop_back( const size_t size ) const
 c_byte_stream::e_status
 c_byte_stream::pop_back_async( const size_t size ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1444,7 +1444,7 @@ c_byte_stream::erase( const size_t start, const size_t size ) const
 c_byte_stream::e_status
 c_byte_stream::erase_async( const size_t start, const size_t size ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1469,7 +1469,7 @@ c_byte_stream::flush() const
 c_byte_stream::e_status
 c_byte_stream::flush_async() const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return e_status::busy;
     }
@@ -1496,7 +1496,7 @@ c_byte_stream::compare( const unsigned char* pattern, const size_t size, const s
 int
 c_byte_stream::compare_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return -1;
     }
@@ -1523,7 +1523,7 @@ c_byte_stream::index_of( const int val, const size_t offset, const size_t end ) 
 size_t
 c_byte_stream::index_of_async( const int val, const size_t offset, const size_t end ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return npos;
     }
@@ -1550,7 +1550,7 @@ c_byte_stream::index_of( const unsigned char* pattern, const size_t size, const 
 size_t
 c_byte_stream::index_of_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return npos;
     }
@@ -1577,7 +1577,7 @@ c_byte_stream::index_of_back( const int val, const size_t offset, const size_t e
 size_t
 c_byte_stream::index_of_back_async( const int val, const size_t offset, const size_t end ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return npos;
     }
@@ -1604,7 +1604,7 @@ c_byte_stream::index_of_back( const unsigned char* pattern, const size_t size, c
 size_t
 c_byte_stream::index_of_back_async( const unsigned char* pattern, const size_t size, const size_t offset, const size_t end ) const
 {
-    if ( !impl->try_lock() )
+    if ( impl->try_lock() == false )
     {
         return npos;
     }

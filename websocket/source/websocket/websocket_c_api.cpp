@@ -45,7 +45,7 @@ websocket_create()
 e_ws_status
 websocket_setup( void *ctx, const ws_settings_t *settings )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return status_error;
     }
@@ -56,7 +56,7 @@ websocket_setup( void *ctx, const ws_settings_t *settings )
 e_ws_status
 websocket_bind( void *ctx, const char *bind_ip, const char *bind_port, int *out_fd )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return status_error;
     }
@@ -67,7 +67,7 @@ websocket_bind( void *ctx, const char *bind_ip, const char *bind_port, int *out_
 e_ws_status
 websocket_open( void *ctx, const char *host_ip, const char *host_port, int *out_fd )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return status_error;
     }
@@ -78,7 +78,7 @@ websocket_open( void *ctx, const char *host_ip, const char *host_port, int *out_
 e_ws_status
 websocket_on( void *ctx, const char *event_name, void *callback )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return status_error;
     }
@@ -89,7 +89,7 @@ websocket_on( void *ctx, const char *event_name, void *callback )
 bool
 websocket_operate( void *ctx )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return false;
     }
@@ -100,7 +100,7 @@ websocket_operate( void *ctx )
 void
 websocket_destroy( void *ctx )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return;
     }
@@ -125,7 +125,7 @@ websocket_frame_create( const e_ws_frame_opcode opcode )
 void
 websocket_frame_mask( void *ctx, const int key )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return;
     }
@@ -136,7 +136,7 @@ websocket_frame_mask( void *ctx, const int key )
 bool
 websocket_frame_push( void *ctx, const unsigned char *data, const size_t size )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return false;
     }
@@ -147,7 +147,7 @@ websocket_frame_push( void *ctx, const unsigned char *data, const size_t size )
 void
 websocket_frame_flush( void *ctx )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return;
     }
@@ -158,7 +158,7 @@ websocket_frame_flush( void *ctx )
 bool
 websocket_frame_emit( void *ctx, const int fd, void *frame )
 {
-    if ( !ctx || !frame )
+    if ( ctx == 0 || frame == 0 )
     {
         return false;
     }
@@ -169,7 +169,7 @@ websocket_frame_emit( void *ctx, const int fd, void *frame )
 void
 websocket_frame_destroy( void *ctx )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return;
     }
@@ -182,12 +182,23 @@ websocket_frame_destroy( void *ctx )
 void
 websocket_close( void *ctx, const int fd )
 {
-    if ( !ctx )
+    if ( ctx == 0 )
     {
         return;
     }
 
     static_cast< c_websocket * >( ctx )->close( fd );
+}
+
+const char *
+websocket_sub_protocol( void *ctx, const int fd )
+{
+    if ( ctx == 0 )
+    {
+        return "";
+    }
+
+    return static_cast< c_websocket * >( ctx )->get_sub_protocol( fd );
 }
 
 #endif

@@ -141,6 +141,22 @@ typedef struct
          * compression windows and better compression ratios but require more memory.
          */
         unsigned char window_bits;
+
+        /**
+         * @brief Negotiated window size used to compress outgoing messages.
+         *
+         * Filled during the opening handshake, RFC 7692 allows both directions
+         * to settle on a different window size.
+         */
+        unsigned char deflate_window_bits;
+
+        /**
+         * @brief Negotiated window size used to decompress incoming messages.
+         *
+         * Filled during the opening handshake, RFC 7692 allows both directions
+         * to settle on a different window size.
+         */
+        unsigned char inflate_window_bits;
     } permessage_deflate;
 } ws_extensions_t;
 
@@ -158,8 +174,21 @@ typedef struct
 
     e_ws_mode mode; /**< @brief Operation mode (secured or unsecured). */
 
-    unsigned int read_timeout; /**< @brief Read timeout in milliseconds. Defines how long to wait for reading data. */
-    unsigned int poll_timeout; /**< @brief Poll timeout in milliseconds. Defines how long to wait during polling operations. */
+    /**
+     * @brief Read timeout in milliseconds, defines how long a single read waits for data.
+     *
+     * A value of 0 makes the read block until data arrives, which stalls every other
+     * connection managed by the same instance. Keep it small and non zero.
+     */
+    unsigned int read_timeout;
+
+    /**
+     * @brief Poll timeout in milliseconds, defines how long a single poll waits for readiness.
+     *
+     * A value of 0 makes the poll block until the file descriptor becomes ready, which
+     * stalls every other connection managed by the same instance. Keep it small and non zero.
+     */
+    unsigned int poll_timeout;
 
     char *ssl_seed; /**< @brief Seed for the SSL/TLS random number generator. */
     char *ssl_ca_cert; /**< @brief CA certificate used for SSL/TLS verification. */
@@ -168,15 +197,24 @@ typedef struct
 
     size_t fd_limit; /**< @brief Maximum number of file descriptors that the WebSocket should manage. */
 
-    char *host; /**< @brief Hostname or IP address of the WebSocket server. This field must be filled. */
+    /**
+     * @brief Authority of the WebSocket server, either "host" or "host:port". This field must be filled.
+     *
+     * A server matches it against the `Host` header field of an incoming handshake and a
+     * client sends it as its own `Host`. Given without a port, any port the peer dialled
+     * is accepted, given with one, the port has to match as well.
+     */
+    char *host;
+
     char *allowed_origin; /**< @brief Allowed origin for WebSocket connections (used in CORS scenarios). This field can be NULL. */
+    char *channel; /**< @brief Resource name a client requests, defaults to "/". This field can be NULL. */
+    char *sub_protocols; /**< @brief Comma separated list of supported subprotocols. This field can be NULL. */
 
     unsigned int ping_interval; /**< @brief Interval in milliseconds between WebSocket ping messages to maintain connection. */
     unsigned int ping_timeout; /**< @brief Timeout in milliseconds to wait for a pong message after sending a ping. */
 
     size_t message_limit; /**< @brief Message limit in bytes. (default 4mb) */
 
-    bool auto_mask_frame; /** @brief Enable/Disable automatic frame masking with random generated secret. (default enabled) */
 
     ws_extensions_t extensions; /** @brief configurable Websocket extensions */
 } ws_settings_t;
@@ -189,12 +227,14 @@ typedef struct
  * include:
  * - `endpoint` is set to `endpoint_server`.
  * - `mode` is set to `mode_unsecured`.
- * - Timeouts (read and poll) are set to 0.
+ * - Timeouts (read and poll) are set to 1 millisecond, a value of 0 would block the event loop.
  * - SSL/TLS fields (seed, certificates, private key) are set to NULL.
- * - `fd_limit` is set to 0.
- * - `host` and `allowed_origin` are set to NULL.
+ * - `fd_limit` is set to 0, which does not limit the number of file descriptors.
+ * - `host`, `allowed_origin`, `channel` and `sub_protocols` are set to NULL.
  * - `ping_interval` is set to 60 seconds (60000 ms).
  * - `ping_timeout` is set to 30 seconds (30000 ms).
+ * - `message_limit` is set to 4 megabytes.
+ * - `extensions` are disabled with a window size of 15 bits.
  *
  * @param[in,out] settings Pointer to the WebSocket settings structure to initialize.
  */
@@ -212,28 +252,31 @@ static inline void ws_settings_init( ws_settings_t *settings )
     settings->mode = mode_unsecured;
 #endif
 
-    settings->read_timeout = 0;
-    settings->poll_timeout = 0;
+    settings->read_timeout = 1;
+    settings->poll_timeout = 1;
 
-    settings->ssl_seed = NULL;
-    settings->ssl_ca_cert = NULL;
-    settings->ssl_own_cert = NULL;
-    settings->ssl_private_key = NULL;
+    settings->ssl_seed = 0;
+    settings->ssl_ca_cert = 0;
+    settings->ssl_own_cert = 0;
+    settings->ssl_private_key = 0;
 
     settings->fd_limit = 0;
 
-    settings->host = NULL;
-    settings->allowed_origin = NULL;
+    settings->host = 0;
+    settings->allowed_origin = 0;
+    settings->channel = 0;
+    settings->sub_protocols = 0;
 
     settings->ping_interval = 60 * 1000;
     settings->ping_timeout = 30 * 1000;
 
     settings->message_limit = 4 * 1024 * 1024; // 4mb in bytes
 
-    settings->auto_mask_frame = true;
 
     settings->extensions.permessage_deflate.enabled = false;
     settings->extensions.permessage_deflate.window_bits = 15;
+    settings->extensions.permessage_deflate.deflate_window_bits = 15;
+    settings->extensions.permessage_deflate.inflate_window_bits = 15;
 }
 
 /**
@@ -241,9 +284,9 @@ static inline void ws_settings_init( ws_settings_t *settings )
  *
  * This function safely frees any memory that was allocated for the WebSocket
  * settings structure, specifically for the SSL/TLS fields (`ssl_seed`, `ssl_ca_cert`,
- * `ssl_own_cert`, `ssl_private_key`), the `host`, and `allowed_origin` fields.
- * After freeing the memory, the respective pointers are set to NULL to prevent
- * dangling pointers.
+ * `ssl_own_cert`, `ssl_private_key`) and the `host`, `allowed_origin`, `channel`
+ * and `sub_protocols` fields. After freeing the memory, the respective pointers
+ * are set to NULL to prevent dangling pointers.
  *
  * @param[in,out] settings Pointer to the WebSocket settings structure to destroy.
  */
@@ -260,7 +303,7 @@ static inline void ws_settings_destroy( ws_settings_t *settings )
 #else
         free( settings->ssl_seed );
 #endif
-        settings->ssl_seed = NULL;
+        settings->ssl_seed = 0;
     }
 
     if ( settings->ssl_ca_cert )
@@ -270,7 +313,7 @@ static inline void ws_settings_destroy( ws_settings_t *settings )
 #else
         free( settings->ssl_ca_cert );
 #endif
-        settings->ssl_ca_cert = NULL;
+        settings->ssl_ca_cert = 0;
     }
 
     if ( settings->ssl_own_cert )
@@ -280,7 +323,7 @@ static inline void ws_settings_destroy( ws_settings_t *settings )
 #else
         free( settings->ssl_own_cert );
 #endif
-        settings->ssl_own_cert = NULL;
+        settings->ssl_own_cert = 0;
     }
 
     if ( settings->ssl_private_key )
@@ -300,7 +343,7 @@ static inline void ws_settings_destroy( ws_settings_t *settings )
 #else
         free( settings->host );
 #endif
-        settings->host = NULL;
+        settings->host = 0;
     }
 
     if ( settings->allowed_origin )
@@ -310,7 +353,27 @@ static inline void ws_settings_destroy( ws_settings_t *settings )
 #else
         free( settings->allowed_origin );
 #endif
-        settings->allowed_origin = NULL;
+        settings->allowed_origin = 0;
+    }
+
+    if ( settings->channel )
+    {
+#ifdef __cplusplus
+        std::free( settings->channel );
+#else
+        free( settings->channel );
+#endif
+        settings->channel = 0;
+    }
+
+    if ( settings->sub_protocols )
+    {
+#ifdef __cplusplus
+        std::free( settings->sub_protocols );
+#else
+        free( settings->sub_protocols );
+#endif
+        settings->sub_protocols = 0;
     }
 }
 

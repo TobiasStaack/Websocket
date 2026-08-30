@@ -51,9 +51,9 @@ public:
      *
      * This method uses zlib for compression as per the specified RFCs.
      *
-     * @param input Pointer to the input byte stream to be compressed.
-     * @param output Pointer to the output byte stream where compressed data will be stored.
-     * @param window_bits Size of the sliding window to use for compression.
+     * @param[in] input Pointer to the input byte stream to be compressed.
+     * @param[in] output Pointer to the output byte stream where compressed data will be stored.
+     * @param[in] window_bits Size of the sliding window to use for compression.
      *
      * @return e_status The status of the compression operation.
      */
@@ -65,12 +65,13 @@ public:
      *
      * This method uses zlib for decompression as per the specified RFCs.
      *
-     * @param input Pointer to the input byte stream to be decompressed.
-     * @param output Pointer to the output byte stream where decompressed data will be stored.
-     * @param window_bits Size of the sliding window to use for decompression.
+     * @param[in] input Pointer to the input byte stream to be decompressed.
+     * @param[in] output Pointer to the output byte stream where decompressed data will be stored.
+     * @param[in] window_bits Size of the sliding window to use for decompression.
+     * @param[in] limit Maximum number of decompressed bytes, 0 disables the limit.
      *
      * @return e_status The status of the decompression operation.
      */
     static e_status
-    inflate( const c_byte_stream* input, const c_byte_stream* output, unsigned char window_bits );
+    inflate( const c_byte_stream* input, const c_byte_stream* output, unsigned char window_bits, size_t limit );
 };

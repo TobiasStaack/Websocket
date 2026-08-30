@@ -146,7 +146,7 @@ int
 main()
 {
 #if defined( _WIN32 ) && !defined( EFIX64 ) && !defined( EFI32 )
-    if ( !SetConsoleCtrlHandler( win_console_handler, TRUE ) )
+    if ( SetConsoleCtrlHandler( win_console_handler, TRUE ) == 0 )
     {
         return 1;
     }
@@ -158,13 +158,13 @@ main()
 
 #ifdef WEBSOCKET_EXAMPLE_ENDPOINT_SERVER
     settings.endpoint = endpoint_server;
-    settings.auto_mask_frame = false;
 #elif WEBSOCKET_EXAMPLE_ENDPOINT_CLIENT
     settings.endpoint = endpoint_client;
-    settings.auto_mask_frame = true;
 #endif
 
     settings.host = strdup( "localhost:4433" );
+    settings.channel = strdup( "/" );
+    settings.sub_protocols = strdup( "chat" );
 
     settings.extensions.permessage_deflate.enabled = true;
 
