@@ -288,6 +288,8 @@ struct file_descriptor_context
     mbedtls_timing_delay_context timer_ping_pong_ctx{};
     mbedtls_timing_delay_context timer_close_ctx{};
 
+    size_t pending_write; /**< length of an ssl write that returned want-write and must be retried unchanged. */
+
     e_ws_closure_status closure_status; /**< closure reason for file descriptor. */
 
     file_descriptor_context();
@@ -615,6 +617,8 @@ file_descriptor_context::
     mbedtls_timing_set_delay( &timer_ping_ctx, 0, 0 );
     mbedtls_timing_set_delay( &timer_ping_pong_ctx, 0, 0 );
     mbedtls_timing_set_delay( &timer_close_ctx, 0, 0 );
+
+    pending_write = 0;
 
     closure_status = closure_no_status_received;
 
@@ -1261,8 +1265,14 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
             while ( sent < pending )
             {
-                const size_t remaining = pending - sent;
-                const size_t length = remaining > CHUNK_SIZE ? CHUNK_SIZE : remaining;
+                size_t length = pending - sent > CHUNK_SIZE ? CHUNK_SIZE : pending - sent;
+
+                // mbedtls requires that an ssl write which returned want-write is retried with the
+                // same length, so a chunk left in flight from a previous cycle keeps its length
+                if ( ctx->pending_write != 0 && sent == 0 )
+                {
+                    length = ctx->pending_write < pending ? ctx->pending_write : pending;
+                }
 
                 int status;
 
@@ -1278,6 +1288,7 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                 if ( status > 0 )
                 {
                     sent += static_cast< size_t >( status );
+                    ctx->pending_write = 0;
 
                     continue;
                 }
@@ -1292,6 +1303,8 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
 
                     case MBEDTLS_ERR_SSL_WANT_READ:
                     case MBEDTLS_ERR_SSL_WANT_WRITE:
+                        // remember the length so the retry uses the same one, as mbedtls requires
+                        ctx->pending_write = length;
                         break;
 
                     default:
