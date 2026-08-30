@@ -177,16 +177,17 @@ typedef struct
     /**
      * @brief Read timeout in milliseconds, defines how long a single read waits for data.
      *
-     * A value of 0 makes the read block until data arrives, which stalls every other
-     * connection managed by the same instance. Keep it small and non zero.
+     * The sockets are non blocking, so a value of 0 means a read returns at once when no
+     * data is pending. A value above 0 makes a read wait that long for data, which during
+     * the tls handshake can cut a slow flight short, so 0 is recommended for the event loop.
      */
     unsigned int read_timeout;
 
     /**
      * @brief Poll timeout in milliseconds, defines how long a single poll waits for readiness.
      *
-     * A value of 0 makes the poll block until the file descriptor becomes ready, which
-     * stalls every other connection managed by the same instance. Keep it small and non zero.
+     * A value of 0 returns at once, which keeps the loop responsive but busy spins, a small
+     * value lets the poll sleep between events.
      */
     unsigned int poll_timeout;
 
@@ -227,7 +228,8 @@ typedef struct
  * include:
  * - `endpoint` is set to `endpoint_server`.
  * - `mode` is set to `mode_unsecured`.
- * - Timeouts (read and poll) are set to 1 millisecond, a value of 0 would block the event loop.
+ * - `read_timeout` is set to 0, non blocking reads for the event loop.
+ * - `poll_timeout` is set to 10 milliseconds so the poll sleeps between events.
  * - SSL/TLS fields (seed, certificates, private key) are set to NULL.
  * - `fd_limit` is set to 0, which does not limit the number of file descriptors.
  * - `host`, `allowed_origin`, `channel` and `sub_protocols` are set to NULL.
@@ -252,8 +254,8 @@ static inline void ws_settings_init( ws_settings_t *settings )
     settings->mode = mode_unsecured;
 #endif
 
-    settings->read_timeout = 1;
-    settings->poll_timeout = 1;
+    settings->read_timeout = 0;
+    settings->poll_timeout = 10;
 
     settings->ssl_seed = 0;
     settings->ssl_ca_cert = 0;

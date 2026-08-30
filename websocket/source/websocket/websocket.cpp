@@ -439,6 +439,16 @@ c_websocket::impl_t::
 
 c_websocket::impl_t::~impl_t()
 {
+    // release any connection still open, operate() frees and erases the ones it tears down,
+    // so only the descriptors that never reached teardown remain here
+    for ( auto& it : fd_map )
+    {
+        file_descriptor_context* ctx = &it.second;
+
+        mbedtls_net_free( &ctx->net );
+        mbedtls_ssl_free( &ctx->ssl );
+    }
+
     fd_map.clear();
 }
 
@@ -1551,7 +1561,9 @@ c_websocket::impl_t::operate()
 
                 wait_lock();
 
-                if ( status == MBEDTLS_ERR_SSL_WANT_READ || status == MBEDTLS_ERR_SSL_WANT_WRITE )
+                // retry a blocked close notify, but never past the close timeout so a silent
+                // peer cannot keep the descriptor alive forever
+                if ( ( status == MBEDTLS_ERR_SSL_WANT_READ || status == MBEDTLS_ERR_SSL_WANT_WRITE ) && mbedtls_timing_get_delay( &ctx->timer_close_ctx ) != 2 )
                 {
                     ++it;
                     continue;
