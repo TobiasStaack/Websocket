@@ -989,6 +989,13 @@ c_websocket::impl_t::communicate( file_descriptor_context* ctx )
                 }
 
                 received += static_cast< size_t >( status );
+
+                // a secured read waits for the configured timeout, so the burst must only
+                // continue while the tls layer already holds more data, never blocking on the socket
+                if ( mode == mode_secured && mbedtls_ssl_get_bytes_avail( &ctx->ssl ) == 0 )
+                {
+                    break;
+                }
             }
 
             if ( received )
